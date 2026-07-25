@@ -46,7 +46,7 @@ final class XercesValidationSession {
 
         try {
             configureStructuredErrors(validator, collector);
-            XMLReader reader = newSecureReader(collector);
+            XMLReader reader = xmlReader(source, collector);
             reader.setContentHandler(pathTracker);
             reader.parse(inputSource(source));
         } catch (SAXException
@@ -95,18 +95,37 @@ final class XercesValidationSession {
             throws SAXException, ParserConfigurationException {
         SAXParserFactoryImpl factory = new SAXParserFactoryImpl();
         factory.setNamespaceAware(true);
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-
         XMLReader reader = factory.newSAXParser().getXMLReader();
+        configureSecureReader(reader, collector);
+        return reader;
+    }
+
+    private static XMLReader xmlReader(
+            Source source,
+            DiagnosticCollector collector)
+            throws SAXException, ParserConfigurationException {
+        if (source instanceof SAXSource saxSource && saxSource.getXMLReader() != null) {
+            XMLReader reader = saxSource.getXMLReader();
+            configureSecureReader(reader, collector);
+            return reader;
+        }
+        return newSecureReader(collector);
+    }
+
+    private static void configureSecureReader(
+            XMLReader reader,
+            DiagnosticCollector collector)
+            throws SAXException {
+        reader.setFeature("http://xml.org/sax/features/namespaces", true);
+        reader.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        reader.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
         reader.setProperty(ERROR_HANDLER, collector);
         reader.setEntityResolver((publicId, systemId) -> {
             throw new SAXException("External entity resolution is disabled.");
         });
-        return reader;
     }
 
     private static InputSource inputSource(Source source) throws SAXException {
@@ -126,6 +145,6 @@ final class XercesValidationSession {
             }
             return input;
         }
-        throw new SAXException("Milestone 0 supports StreamSource and SAXSource XML input.");
+        throw new SAXException("Only StreamSource and SAXSource XML input are supported.");
     }
 }

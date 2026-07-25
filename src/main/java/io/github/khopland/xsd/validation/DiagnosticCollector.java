@@ -31,6 +31,12 @@ final class DiagnosticCollector implements XMLErrorHandler {
         return List.copyOf(diagnostics);
     }
 
+    boolean hasNonWarningDiagnosticAt(String path) {
+        return diagnostics.stream().anyMatch(diagnostic ->
+                diagnostic.severity() != ValidationSeverity.WARNING
+                        && diagnostic.path().equals(path));
+    }
+
     int rawEventCount() {
         return rawEventCount;
     }

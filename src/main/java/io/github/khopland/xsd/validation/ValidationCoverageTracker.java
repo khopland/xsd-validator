@@ -39,12 +39,9 @@ final class ValidationCoverageTracker extends DefaultHandler {
                 && depth > 1
                 && psvi != null
                 && psvi.getValidationAttempted() != ItemPSVI.VALIDATION_FULL
-                && hasNoErrors(psvi.getErrorCodes())
-                && collector.diagnostics().stream().noneMatch(diagnostic ->
-                        diagnostic.path().equals(pathTracker.context().path())
-                                && diagnostic.severity()
-                                        != ValidationSeverity.WARNING)) {
-            skippedOrLaxContent = true;
+                && hasNoErrors(psvi.getErrorCodes())) {
+            String path = pathTracker.context().path();
+            skippedOrLaxContent = !collector.hasNonWarningDiagnosticAt(path);
         }
         depth--;
     }

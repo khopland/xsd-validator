@@ -16,10 +16,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.xml.namespace.QName;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamSource;
 import org.apache.xerces.dom.DOMInputImpl;
+import org.apache.xerces.jaxp.SAXParserFactoryImpl;
+import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.xml.sax.InputSource;
+import org.xml.sax.helpers.XMLFilterImpl;
 
 class BetterXsdValidatorTest {
     private static final String CHOICE_SCHEMA = """
@@ -128,6 +133,18 @@ class BetterXsdValidatorTest {
                         .validate(xml("<value><c/><b/></value>"))
                         .valid())
                 .isTrue();
+    }
+
+    @Test
+    void createsAnEmptyChoiceIndexForAnEmptyGrammarPool() throws Exception {
+        ChoiceIndex choices = ChoiceIndex.from(new XMLSchemaFactory().newSchema(), "");
+
+        assertThat(choices.hasRootLocalName("anything")).isFalse();
+        assertThat(choices.match(
+                        new QName("value"),
+                        new QName("anything"),
+                        java.util.List.of()))
+                .isEmpty();
     }
 
     @Test
@@ -612,6 +629,46 @@ class BetterXsdValidatorTest {
                     .containsExactly("cvc-enumeration-valid", "cvc-type.3.1.3");
         });
         assertThat(report.toString()).doesNotContain("private-submitted-value");
+    }
+
+    @Test
+    void fallsBackWhenStructuredDiagnosticMappingFails() throws Exception {
+        XercesSchemaCompiler.CompiledSchema compiled = XercesSchemaCompiler.compile(
+                new StreamSource(new StringReader("""
+                        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                          <xs:element name="value" type="xs:string"/>
+                        </xs:schema>
+                        """)),
+                null);
+        Object invalidArgument = new Object() {
+            @Override
+            public String toString() {
+                throw new IllegalArgumentException("cannot render");
+            }
+        };
+        RawDiagnostic diagnostic = new RawDiagnostic(
+                "",
+                "cvc-enumeration-valid",
+                new Object[] {null, invalidArgument},
+                ValidationSeverity.ERROR,
+                "/value[1]",
+                1,
+                1,
+                new QName("value"),
+                null,
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of());
+
+        assertThat(DiagnosticMapper.map(
+                        java.util.List.of(diagnostic),
+                        compiled.identity(),
+                        compiled.choiceIndex()))
+                .singleElement()
+                .satisfies(issue -> {
+                    assertThat(issue.code()).isEqualTo("SCHEMA_VALIDATION_ERROR");
+                    assertThat(issue.schemaCodes()).containsExactly("cvc-enumeration-valid");
+                });
     }
 
     @Test
@@ -1537,6 +1594,33 @@ class BetterXsdValidatorTest {
             assertThat(issue.code()).isEqualTo("XML_PROCESSING_ERROR");
             assertThat(issue.schemaCodes()).containsExactly("xml-processing-stopped");
         });
+    }
+
+    @Test
+    void usesTheXmlReaderSuppliedByASaxSource() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value" type="xs:string"/>
+                </xs:schema>
+                """);
+        SAXParserFactoryImpl factory = new SAXParserFactoryImpl();
+        factory.setNamespaceAware(true);
+        AtomicBoolean readerUsed = new AtomicBoolean();
+        XMLFilterImpl reader = new XMLFilterImpl(factory.newSAXParser().getXMLReader()) {
+            @Override
+            public void parse(InputSource input) throws IOException, org.xml.sax.SAXException {
+                readerUsed.set(true);
+                super.parse(input);
+            }
+        };
+
+        ValidationReport report = validator.validate(new SAXSource(
+                reader,
+                new InputSource(new StringReader("<value>ok</value>"))));
+
+        assertThat(readerUsed).isTrue();
+        assertThat(report.valid()).isTrue();
+        assertThat(report.complete()).isTrue();
     }
 
     private static BetterXsdValidator compile(String schema)

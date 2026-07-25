@@ -33,30 +33,37 @@ final class DiagnosticMapper {
         List<IssueBuilder> issues = new ArrayList<>();
         for (int index = 0; index < diagnostics.size(); index++) {
             RawDiagnostic diagnostic = diagnostics.get(index);
-            if (index + 1 < diagnostics.size()
-                    && isValueCompanion(diagnostic, diagnostics.get(index + 1))) {
-                RawDiagnostic companion = diagnostics.get(++index);
-                QName attribute = "cvc-attribute.3".equals(companion.key())
-                        ? attributeName(companion)
-                        : null;
-                IssueBuilder issue = mapOne(diagnostic, schema, choices, attribute);
-                issue.schemaCodes.add(companion.key());
-                issues.add(issue);
-            } else if (index + 1 < diagnostics.size()
-                    && isFixedAttributeCompanion(diagnostic, diagnostics.get(index + 1))) {
-                IssueBuilder issue = mapOne(
+            try {
+                if (index + 1 < diagnostics.size()
+                        && isValueCompanion(diagnostic, diagnostics.get(index + 1))) {
+                    RawDiagnostic companion = diagnostics.get(++index);
+                    QName attribute = "cvc-attribute.3".equals(companion.key())
+                            ? attributeName(companion)
+                            : null;
+                    IssueBuilder issue = mapOne(diagnostic, schema, choices, attribute);
+                    issue.schemaCodes.add(companion.key());
+                    issues.add(issue);
+                } else if (index + 1 < diagnostics.size()
+                        && isFixedAttributeCompanion(diagnostic, diagnostics.get(index + 1))) {
+                    IssueBuilder issue = mapOne(
+                            diagnostic,
+                            schema,
+                            choices,
+                            attributeName(diagnostic));
+                    issue.schemaCodes.add(diagnostics.get(++index).key());
+                    issues.add(issue);
+                } else {
+                    issues.add(mapOne(
+                            diagnostic,
+                            schema,
+                            choices,
+                            attributeName(diagnostic)));
+                }
+            } catch (RuntimeException exception) {
+                issues.add(issue(
                         diagnostic,
-                        schema,
-                        choices,
-                        attributeName(diagnostic));
-                issue.schemaCodes.add(diagnostics.get(++index).key());
-                issues.add(issue);
-            } else {
-                issues.add(mapOne(
-                        diagnostic,
-                        schema,
-                        choices,
-                        attributeName(diagnostic)));
+                        "SCHEMA_VALIDATION_ERROR",
+                        "XML does not satisfy schema constraint '" + diagnostic.key() + "'."));
             }
         }
         return issues.stream().map(IssueBuilder::build).toList();
@@ -591,7 +598,7 @@ final class DiagnosticMapper {
         if (value.startsWith("[") && value.endsWith("]")) {
             value = value.substring(1, value.length() - 1);
         }
-        // ponytail: Xerces flattens enum facets into one string; use XSModel when
+        // Xerces flattens enum facets into one string; use XSModel when
         // comma-containing enumeration values need lossless structured previews.
         List<String> values = value.isEmpty()
                 ? List.of()

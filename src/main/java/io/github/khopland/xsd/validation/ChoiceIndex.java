@@ -34,6 +34,9 @@ final class ChoiceIndex {
 
     static ChoiceIndex from(Schema schema, String targetNamespace) {
         XSModel model = model(schema);
+        if (model == null) {
+            return new ChoiceIndex(List.of(), Set.of());
+        }
         List<Choice> choices = new ArrayList<>();
         Set<String> rootLocalNames = new LinkedHashSet<>();
         Set<XSElementDeclaration> visited =
@@ -114,6 +117,9 @@ final class ChoiceIndex {
         Grammar[] grammars = ((XSGrammarPoolContainer) schema)
                 .getGrammarPool()
                 .retrieveInitialGrammarSet(XMLGrammarDescription.XML_SCHEMA);
+        if (grammars.length == 0) {
+            return null;
+        }
         XSGrammar[] schemaGrammars = new XSGrammar[grammars.length];
         for (int index = 0; index < grammars.length; index++) {
             schemaGrammars[index] = (XSGrammar) grammars[index];
