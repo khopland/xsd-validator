@@ -12,7 +12,7 @@ import javax.xml.namespace.QName;
  * @param severity issue severity
  * @param code stable library code documented in the project README
  * @param message safe human-readable explanation
- * @param path namespace-aware validation location rendered as an indexed element path
+ * @param path namespace-aware indexed path using {@code {namespace}local} segments
  * @param line one-based line, or a negative value when unavailable
  * @param column one-based column, or a negative value when unavailable
  * @param actualElement element at the validation location, when available

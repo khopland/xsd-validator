@@ -103,6 +103,8 @@ final class DiagnosticCollector implements XMLErrorHandler {
                 exception == null ? context.column() : exception.getColumnNumber(),
                 context.actualElement(),
                 context.parentElement(),
+                context.actualType(),
+                context.parentType(),
                 context.previousSiblings(),
                 context.children(),
                 context.attributes()));

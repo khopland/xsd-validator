@@ -25,7 +25,6 @@ import org.w3c.dom.Element;
 import org.w3c.dom.ls.LSException;
 import org.w3c.dom.ls.LSInput;
 import org.w3c.dom.ls.LSResourceResolver;
-import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 final class XercesSchemaCompiler {
@@ -80,13 +79,11 @@ final class XercesSchemaCompiler {
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
 
-            InputSource input = new InputSource(new ByteArrayInputStream(snapshot.bytes()));
-            input.setSystemId(snapshot.systemId());
             var builder = factory.newDocumentBuilder();
             builder.setEntityResolver((publicId, systemId) -> {
                 throw new SAXException("External entity resolution is disabled.");
             });
-            Document document = builder.parse(input);
+            Document document = builder.parse(snapshot.asInputSource());
             Element root = document.getDocumentElement();
             if (!XSD_NAMESPACE.equals(root.getNamespaceURI())
                     || !"schema".equals(root.getLocalName())) {

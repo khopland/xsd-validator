@@ -2,6 +2,7 @@ package io.github.khopland.xsd.validation;
 
 import java.util.List;
 import javax.xml.namespace.QName;
+import org.apache.xerces.xs.XSTypeDefinition;
 
 record RawDiagnostic(
         String domain,
@@ -13,6 +14,8 @@ record RawDiagnostic(
         int column,
         QName actualElement,
         QName parentElement,
+        XSTypeDefinition actualType,
+        XSTypeDefinition parentType,
         List<DocumentPathTracker.SeenElement> previousSiblings,
         List<DocumentPathTracker.SeenElement> children,
         List<QName> attributes) {

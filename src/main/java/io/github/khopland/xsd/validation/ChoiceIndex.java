@@ -22,6 +22,8 @@ import org.apache.xerces.xs.XSNamedMap;
 import org.apache.xerces.xs.XSObject;
 import org.apache.xerces.xs.XSParticle;
 import org.apache.xerces.xs.XSTerm;
+import org.apache.xerces.xs.XSTypeDefinition;
+import org.apache.xerces.xs.XSWildcard;
 
 final class ChoiceIndex {
     private final List<Choice> choices;
@@ -60,8 +62,16 @@ final class ChoiceIndex {
             QName parentName,
             QName actualName,
             List<DocumentPathTracker.SeenElement> previousSiblings) {
+        return match(null, parentName, actualName, previousSiblings);
+    }
+
+    Optional<Match> match(
+            XSTypeDefinition parentType,
+            QName parentName,
+            QName actualName,
+            List<DocumentPathTracker.SeenElement> previousSiblings) {
         for (Choice choice : choices) {
-            if (!choice.parentName().equals(parentName)) {
+            if (!matchesParent(choice, parentType, parentName)) {
                 continue;
             }
 
@@ -92,8 +102,15 @@ final class ChoiceIndex {
     Optional<IncompleteMatch> incomplete(
             QName parentName,
             List<DocumentPathTracker.SeenElement> previousSiblings) {
+        return incomplete(null, parentName, previousSiblings);
+    }
+
+    Optional<IncompleteMatch> incomplete(
+            XSTypeDefinition parentType,
+            QName parentName,
+            List<DocumentPathTracker.SeenElement> previousSiblings) {
         for (Choice choice : choices) {
-            if (!choice.parentName().equals(parentName)) {
+            if (!matchesParent(choice, parentType, parentName)) {
                 continue;
             }
             List<Branch> candidates = compatibleBranches(choice, previousSiblings);
@@ -111,6 +128,24 @@ final class ChoiceIndex {
             }
         }
         return Optional.empty();
+    }
+
+    int maximumOccurrences(XSTypeDefinition parentType, QName elementName) {
+        if (!(parentType instanceof XSComplexTypeDefinition complexType)
+                || complexType.getParticle() == null) {
+            return -1;
+        }
+        long maximum = maximumOccurrences(complexType.getParticle(), elementName);
+        return maximum < 0 || maximum > Integer.MAX_VALUE ? -1 : (int) maximum;
+    }
+
+    private static boolean matchesParent(
+            Choice choice,
+            XSTypeDefinition parentType,
+            QName parentName) {
+        return parentType == null
+                ? choice.parentName().equals(parentName)
+                : choice.parentType() == parentType;
     }
 
     private static XSModel model(Schema schema) {
@@ -137,12 +172,13 @@ final class ChoiceIndex {
             return;
         }
         QName parentName = name(element);
-        findChoices(parentName, type.getParticle(), choices, false);
+        findChoices(parentName, type, type.getParticle(), choices, false);
         indexChildElements(type.getParticle(), choices, visited);
     }
 
     private static void findChoices(
             QName parentName,
+            XSComplexTypeDefinition parentType,
             XSParticle particle,
             List<Choice> choices,
             boolean insideRepeatingParticle) {
@@ -161,11 +197,11 @@ final class ChoiceIndex {
                 }
             }
             if (branches.size() > 1) {
-                choices.add(new Choice(parentName, branches));
+                choices.add(new Choice(parentName, parentType, branches));
             }
         }
         for (Object object : group.getParticles()) {
-            findChoices(parentName, (XSParticle) object, choices, repeating);
+            findChoices(parentName, parentType, (XSParticle) object, choices, repeating);
         }
     }
 
@@ -236,6 +272,60 @@ final class ChoiceIndex {
         return List.copyOf(remaining);
     }
 
+    private static long maximumOccurrences(XSParticle particle, QName elementName) {
+        long termMaximum;
+        XSTerm term = particle.getTerm();
+        if (term instanceof XSElementDeclaration element) {
+            termMaximum = name(element).equals(elementName) ? 1 : 0;
+        } else if (term instanceof XSWildcard) {
+            return -1;
+        } else if (term instanceof XSModelGroup group) {
+            termMaximum = group.getCompositor() == XSModelGroup.COMPOSITOR_CHOICE
+                    ? maximumAcrossBranches(group, elementName)
+                    : maximumAcrossSequence(group, elementName);
+        } else {
+            termMaximum = 0;
+        }
+        if (termMaximum < 0 || particle.getMaxOccursUnbounded()) {
+            return termMaximum == 0 ? 0 : -1;
+        }
+        return multiply(termMaximum, particle.getMaxOccurs());
+    }
+
+    private static long maximumAcrossBranches(XSModelGroup group, QName elementName) {
+        long maximum = 0;
+        for (Object object : group.getParticles()) {
+            long branchMaximum = maximumOccurrences((XSParticle) object, elementName);
+            if (branchMaximum < 0) {
+                return -1;
+            }
+            maximum = Math.max(maximum, branchMaximum);
+        }
+        return maximum;
+    }
+
+    private static long maximumAcrossSequence(XSModelGroup group, QName elementName) {
+        long maximum = 0;
+        for (Object object : group.getParticles()) {
+            long childMaximum = maximumOccurrences((XSParticle) object, elementName);
+            if (childMaximum < 0) {
+                return -1;
+            }
+            maximum = add(maximum, childMaximum);
+        }
+        return maximum;
+    }
+
+    private static long add(long left, long right) {
+        return left > Integer.MAX_VALUE - right ? Integer.MAX_VALUE + 1L : left + right;
+    }
+
+    private static long multiply(long left, int right) {
+        return right != 0 && left > Integer.MAX_VALUE / right
+                ? Integer.MAX_VALUE + 1L
+                : left * right;
+    }
+
     private static QName name(XSObject object) {
         return new QName(namespace(object), object.getName());
     }
@@ -268,7 +358,10 @@ final class ChoiceIndex {
         }
     }
 
-    private record Choice(QName parentName, List<Branch> branches) {
+    private record Choice(
+            QName parentName,
+            XSComplexTypeDefinition parentType,
+            List<Branch> branches) {
         private Choice {
             branches = List.copyOf(branches);
         }

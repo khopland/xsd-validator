@@ -29,6 +29,8 @@ final class ValidationCoverageTracker extends DefaultHandler {
             String localName,
             String qName,
             Attributes attributes) {
+        ElementPSVI psvi = psviProvider.getElementPSVI();
+        pathTracker.schemaType(psvi == null ? null : psvi.getTypeDefinition());
         depth++;
     }
 

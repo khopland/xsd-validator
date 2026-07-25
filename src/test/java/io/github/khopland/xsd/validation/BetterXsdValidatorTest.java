@@ -77,7 +77,8 @@ class BetterXsdValidatorTest {
         assertThat(issue.code())
                 .withFailMessage(report::toString)
                 .isEqualTo("CHOICE_ALREADY_SELECTED");
-        assertThat(issue.path()).isEqualTo("/contact[1]/sms[1]");
+        assertThat(issue.path())
+                .isEqualTo("/{urn:contact}contact[1]/{urn:contact}sms[1]");
         assertThat(issue.message()).contains("<postalAddress>", "mutually exclusive");
         assertThat(issue.schemaCodes()).contains("cvc-complex-type.2.4.d");
     }
@@ -136,6 +137,59 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void doesNotBorrowChoiceMetadataFromASameNamedElementWithAnotherType()
+            throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="first">
+                          <xs:complexType>
+                            <xs:sequence>
+                              <xs:element name="container">
+                                <xs:complexType>
+                                  <xs:choice>
+                                    <xs:element name="a"/>
+                                    <xs:element name="b"/>
+                                  </xs:choice>
+                                </xs:complexType>
+                              </xs:element>
+                            </xs:sequence>
+                          </xs:complexType>
+                        </xs:element>
+                        <xs:element name="second">
+                          <xs:complexType>
+                            <xs:sequence>
+                              <xs:element name="container">
+                                <xs:complexType>
+                                  <xs:sequence>
+                                    <xs:element name="a"/>
+                                    <xs:element name="c"/>
+                                  </xs:sequence>
+                                </xs:complexType>
+                              </xs:element>
+                            </xs:sequence>
+                          </xs:complexType>
+                        </xs:element>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue = validator.validate(xml("""
+                <root>
+                  <first><container><a/></container></first>
+                  <second><container><a/><b/></container></second>
+                </root>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("UNEXPECTED_ELEMENT");
+        assertThat(issue.message()).contains("expected <c>");
+    }
+
+    @Test
     void createsAnEmptyChoiceIndexForAnEmptyGrammarPool() throws Exception {
         ChoiceIndex choices = ChoiceIndex.from(new XMLSchemaFactory().newSchema(), "");
 
@@ -191,7 +245,7 @@ class BetterXsdValidatorTest {
                 """)).issues().get(0);
 
         assertThat(issue.code()).isEqualTo("CHOICE_BRANCH_INCOMPLETE");
-        assertThat(issue.path()).isEqualTo("/contact[1]");
+        assertThat(issue.path()).isEqualTo("/{urn:contact}contact[1]");
         assertThat(issue.message())
                 .contains("<postalAddress>", "Add <postalCode>", "before <contact> closes");
         assertThat(issue.expectedElements())
@@ -479,6 +533,31 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void doesNotCallAnAllowedRepeatOutOfOrderADuplicate() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="item" maxOccurs="2"/>
+                        <xs:element name="after"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue =
+                validator.validate(xml("<value><item/><after/><item/></value>"))
+                        .issues()
+                        .get(0);
+
+        assertThat(issue.code()).isEqualTo("UNEXPECTED_ELEMENT");
+        assertThat(issue.message()).doesNotContain("cannot occur again");
+        assertThat(issue.schemaCodes()).containsExactly("cvc-complex-type.2.4.d");
+    }
+
+    @Test
     void distinguishesAnUnmetMinimumOccurrenceAtClose() throws Exception {
         BetterXsdValidator validator = compile("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -540,6 +619,58 @@ class BetterXsdValidatorTest {
         assertThat(issue.code()).isEqualTo("ROOT_NAMESPACE_MISMATCH");
         assertThat(issue.message()).contains("urn:wrong", "urn:contact");
         assertThat(issue.actualElement().getNamespaceURI()).isEqualTo("urn:wrong");
+    }
+
+    @Test
+    void rendersNamespacesInPathsForSameNamedElements(@TempDir Path directory)
+            throws Exception {
+        Files.writeString(directory.resolve("one.xsd"), """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:one">
+                  <xs:element name="item" type="xs:int"/>
+                </xs:schema>
+                """);
+        Files.writeString(directory.resolve("two.xsd"), """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:two">
+                  <xs:element name="item" type="xs:int"/>
+                </xs:schema>
+                """);
+        Path root = directory.resolve("root.xsd");
+        Files.writeString(root, """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           xmlns:one="urn:one"
+                           xmlns:two="urn:two"
+                           targetNamespace="urn:root"
+                           xmlns="urn:root"
+                           elementFormDefault="qualified">
+                  <xs:import namespace="urn:one" schemaLocation="one.xsd"/>
+                  <xs:import namespace="urn:two" schemaLocation="two.xsd"/>
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element ref="one:item"/>
+                        <xs:element ref="two:item"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        BetterXsdValidator validator =
+                BetterXsdValidator.compile(new StreamSource(root.toFile()));
+
+        ValidationReport report = validator.validate(xml("""
+                <root xmlns="urn:root" xmlns:one="urn:one" xmlns:two="urn:two">
+                  <one:item>invalid</one:item>
+                  <two:item>invalid</two:item>
+                </root>
+                """));
+
+        assertThat(report.issues())
+                .extracting(ValidationIssue::path)
+                .containsExactly(
+                        "/{urn:root}root[1]/{urn:one}item[1]",
+                        "/{urn:root}root[1]/{urn:two}item[1]");
     }
 
     @Test
@@ -655,6 +786,8 @@ class BetterXsdValidatorTest {
                 1,
                 1,
                 new QName("value"),
+                null,
+                null,
                 null,
                 java.util.List.of(),
                 java.util.List.of(),
@@ -1405,6 +1538,20 @@ class BetterXsdValidatorTest {
 
         assertThat(streamClosed).isTrue();
         assertThat(readerClosed).isTrue();
+    }
+
+    @Test
+    void compilesACharacterStreamRegardlessOfItsEncodingDeclaration()
+            throws Exception {
+        BetterXsdValidator validator = BetterXsdValidator.compile(
+                new StreamSource(new StringReader("""
+                        <?xml version="1.0" encoding="UTF-16"?>
+                        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                          <xs:element name="value" type="xs:string"/>
+                        </xs:schema>
+                        """)));
+
+        assertThat(validator.validate(xml("<value>ok</value>")).valid()).isTrue();
     }
 
     @Test
