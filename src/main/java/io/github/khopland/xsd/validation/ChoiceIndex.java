@@ -21,7 +21,7 @@ final class ChoiceIndex {
     }
 
     static ChoiceIndex from(Schema schema, String targetNamespace) {
-        XSModel model = model(schema);
+        @Nullable XSModel model = model(schema);
         if (model == null) {
             return new ChoiceIndex(List.of(), Set.of());
         }
