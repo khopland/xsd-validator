@@ -23,7 +23,6 @@ import org.apache.xerces.jaxp.SAXParserFactoryImpl;
 import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.w3c.dom.ls.LSException;
 import org.xml.sax.InputSource;
 import org.xml.sax.helpers.XMLFilterImpl;
 
@@ -1495,16 +1494,12 @@ class BetterXsdValidatorTest {
     }
 
     @Test
-    void rejectsSchemaDependenciesWithoutASystemIdCleanly() {
-        assertThatExceptionOfType(SchemaCompilationException.class)
-                .isThrownBy(() -> compile("""
-                        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-                          <xs:import namespace="urn:dependency"/>
-                        </xs:schema>
-                        """))
-                .satisfies(exception -> assertThat(exception.getCause())
-                        .isInstanceOf(LSException.class)
-                        .hasMessageContaining("system ID"));
+    void allowsImportsWithoutASchemaLocation() throws SchemaCompilationException {
+        assertThat(compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:import namespace="urn:dependency"/>
+                </xs:schema>
+                """)).isNotNull();
     }
 
     @Test

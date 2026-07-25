@@ -151,7 +151,7 @@ final class XercesSchemaCompiler {
         }
 
         @Override
-        public LSInput resolveResource(
+        public @Nullable LSInput resolveResource(
                 String type,
                 @Nullable String namespaceUri,
                 @Nullable String publicId,
@@ -175,9 +175,7 @@ final class XercesSchemaCompiler {
                     }
                 }
                 if (systemId == null) {
-                    throw new LSException(
-                            LSException.PARSE_ERR,
-                            "The schema dependency has no system ID.");
+                    return null;
                 }
                 URI resolved = baseUri == null
                         ? URI.create(systemId)
