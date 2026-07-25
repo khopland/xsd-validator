@@ -79,3 +79,7 @@ outside its validation result.
 | Identity constraints | `DUPLICATE_KEY`, `DUPLICATE_UNIQUE`, `KEY_REFERENCE_NOT_FOUND`, `KEY_VALUE_MISSING` |
 | Substitution and instance hints | `ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE`, `INVALID_XSI_TYPE`, `XSI_TYPE_NOT_FOUND`, `XSI_TYPE_NOT_DERIVED`, `XSI_NIL_NOT_ALLOWED`, `NILLED_ELEMENT_HAS_CONTENT`, `XSI_NIL_FIXED_VALUE_CONFLICT` |
 | Fallback | `SCHEMA_VALIDATION_ERROR` |
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
