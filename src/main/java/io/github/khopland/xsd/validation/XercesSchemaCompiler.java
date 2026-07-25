@@ -110,8 +110,14 @@ final class XercesSchemaCompiler {
         var dependencies = document.getElementsByTagNameNS(XSD_NAMESPACE, localName);
         for (int index = 0; index < dependencies.getLength(); index++) {
             String location = ((Element) dependencies.item(index)).getAttribute("schemaLocation");
-            if (!location.isEmpty() && !java.net.URI.create(location).isAbsolute()) {
-                return true;
+            if (!location.isEmpty()) {
+                try {
+                    if (!URI.create(location).isAbsolute()) {
+                        return true;
+                    }
+                } catch (IllegalArgumentException exception) {
+                    return true;
+                }
             }
         }
         return false;
@@ -204,18 +210,26 @@ final class XercesSchemaCompiler {
                 throws IOException {
             byte[] bytes;
             String encoding = input.getEncoding();
-            if (input.getByteStream() != null) {
-                bytes = input.getByteStream().readAllBytes();
-            } else if (input.getCharacterStream() != null) {
-                bytes = read(input.getCharacterStream()).getBytes(StandardCharsets.UTF_8);
-                encoding = StandardCharsets.UTF_8.name();
-            } else if (input.getStringData() != null) {
-                bytes = input.getStringData().getBytes(StandardCharsets.UTF_8);
-                encoding = StandardCharsets.UTF_8.name();
+            var byteStream = input.getByteStream();
+            if (byteStream != null) {
+                try (byteStream) {
+                    bytes = byteStream.readAllBytes();
+                }
             } else {
-                throw new LSException(
-                        LSException.PARSE_ERR,
-                        "The explicit schema resolver returned no content.");
+                var characterStream = input.getCharacterStream();
+                if (characterStream != null) {
+                    try (characterStream) {
+                        bytes = read(characterStream).getBytes(StandardCharsets.UTF_8);
+                    }
+                    encoding = StandardCharsets.UTF_8.name();
+                } else if (input.getStringData() != null) {
+                    bytes = input.getStringData().getBytes(StandardCharsets.UTF_8);
+                    encoding = StandardCharsets.UTF_8.name();
+                } else {
+                    throw new LSException(
+                            LSException.PARSE_ERR,
+                            "The explicit schema resolver returned no content.");
+                }
             }
 
             String resolvedSystemId = resolvedSystemId(

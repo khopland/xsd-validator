@@ -13,6 +13,7 @@ import org.apache.xerces.impl.xs.XSMessageFormatter;
 import org.apache.xerces.jaxp.SAXParserFactoryImpl;
 import org.apache.xerces.util.MessageFormatter;
 import org.apache.xerces.xs.PSVIProvider;
+import org.w3c.dom.ls.LSException;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
@@ -31,6 +32,11 @@ final class XercesValidationSession {
             XercesSchemaCompiler.CompiledSchema compiledSchema,
             Source source) {
         ValidatorHandler validator = compiledSchema.schema().newValidatorHandler();
+        validator.setResourceResolver((type, namespaceUri, publicId, systemId, baseUri) -> {
+            throw new LSException(
+                    LSException.PARSE_ERR,
+                    "External schema resolution is disabled during validation.");
+        });
         DocumentPathTracker pathTracker = new DocumentPathTracker(validator);
         DiagnosticCollector collector = new DiagnosticCollector(pathTracker);
         ValidationCoverageTracker coverageTracker =

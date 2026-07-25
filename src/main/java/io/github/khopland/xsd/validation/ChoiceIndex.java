@@ -62,21 +62,26 @@ final class ChoiceIndex {
                 continue;
             }
 
-            int attemptedBranch = branchContaining(choice, actualName);
-            if (attemptedBranch < 0) {
+            List<Branch> attemptedBranches =
+                    branchesContaining(choice.branches(), actualName);
+            if (attemptedBranches.isEmpty()) {
                 continue;
             }
 
-            for (DocumentPathTracker.SeenElement sibling : previousSiblings) {
-                int selectedBranch = branchContaining(choice, sibling.name());
-                if (selectedBranch >= 0 && selectedBranch != attemptedBranch) {
-                    Branch selected = choice.branches().get(selectedBranch);
-                    return Optional.of(new Match(
-                            sibling,
-                            remaining(selected, previousSiblings),
-                            choice.branches().get(attemptedBranch).names()));
-                }
+            List<Branch> candidates = compatibleBranches(choice, previousSiblings);
+            if (candidates.isEmpty()
+                    || candidates.stream().anyMatch(branch -> branch.contains(actualName))) {
+                continue;
             }
+            Branch selected = candidates.get(0);
+            DocumentPathTracker.SeenElement selectedBy = previousSiblings.stream()
+                    .filter(sibling -> selected.contains(sibling.name()))
+                    .findFirst()
+                    .orElseThrow();
+            return Optional.of(new Match(
+                    selectedBy,
+                    remaining(selected, previousSiblings),
+                    attemptedBranches.get(0).names()));
         }
         return Optional.empty();
     }
@@ -88,16 +93,18 @@ final class ChoiceIndex {
             if (!choice.parentName().equals(parentName)) {
                 continue;
             }
-            for (DocumentPathTracker.SeenElement sibling : previousSiblings) {
-                int selectedBranch = branchContaining(choice, sibling.name());
-                if (selectedBranch < 0) {
-                    continue;
-                }
-                List<QName> remaining =
-                        remaining(choice.branches().get(selectedBranch), previousSiblings);
-                if (!remaining.isEmpty()) {
-                    return Optional.of(new IncompleteMatch(sibling, remaining));
-                }
+            List<Branch> candidates = compatibleBranches(choice, previousSiblings);
+            if (candidates.size() != 1) {
+                continue;
+            }
+            Branch selected = candidates.get(0);
+            List<QName> remaining = remaining(selected, previousSiblings);
+            if (!remaining.isEmpty()) {
+                DocumentPathTracker.SeenElement selectedBy = previousSiblings.stream()
+                        .filter(sibling -> selected.contains(sibling.name()))
+                        .findFirst()
+                        .orElseThrow();
+                return Optional.of(new IncompleteMatch(selectedBy, remaining));
             }
         }
         return Optional.empty();
@@ -191,13 +198,26 @@ final class ChoiceIndex {
         return List.copyOf(elements);
     }
 
-    private static int branchContaining(Choice choice, QName elementName) {
-        for (int index = 0; index < choice.branches().size(); index++) {
-            if (choice.branches().get(index).contains(elementName)) {
-                return index;
+    private static List<Branch> compatibleBranches(
+            Choice choice,
+            List<DocumentPathTracker.SeenElement> siblings) {
+        List<Branch> candidates = choice.branches();
+        for (DocumentPathTracker.SeenElement sibling : siblings) {
+            List<Branch> containing =
+                    branchesContaining(choice.branches(), sibling.name());
+            if (!containing.isEmpty()) {
+                candidates = branchesContaining(candidates, sibling.name());
             }
         }
-        return -1;
+        return candidates;
+    }
+
+    private static List<Branch> branchesContaining(
+            List<Branch> branches,
+            QName elementName) {
+        return branches.stream()
+                .filter(branch -> branch.contains(elementName))
+                .toList();
     }
 
     private static List<QName> remaining(

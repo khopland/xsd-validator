@@ -615,7 +615,7 @@ final class DiagnosticMapper {
 
     private static int integerArgument(Object[] arguments, int index) {
         if (index < 0 || arguments.length <= index || arguments[index] == null) {
-            return 1;
+            return -1;
         }
         try {
             return Integer.parseInt(arguments[index].toString());
@@ -681,8 +681,11 @@ final class DiagnosticMapper {
     }
 
     private static String renderElements(List<QName> elements) {
-        return elements.stream().map(DiagnosticMapper::element).reduce((left, right) ->
-                left + " then " + right).orElse("the alternative branch");
+        return elements.stream()
+                .limit(MAX_EXPECTED_ELEMENTS)
+                .map(DiagnosticMapper::element)
+                .reduce((left, right) -> left + " then " + right)
+                .orElse("the alternative branch");
     }
 
     private static String namespace(QName name) {

@@ -3,12 +3,16 @@ package io.github.khopland.xsd.validation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.StringReader;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.xml.namespace.QName;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.dom.DOMSource;
@@ -88,6 +92,75 @@ class BetterXsdValidatorTest {
         assertThat(issue.message())
                 .contains("Complete that branch with <postalCode>", "before using <sms>");
         assertThat(issue.schemaCodes()).contains("cvc-complex-type.2.4.a");
+    }
+
+    @Test
+    void keepsOverlappingChoiceBranchesCompatible() throws Exception {
+        String schema = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value">
+                    <xs:complexType>
+                      <xs:choice>
+                        <xs:sequence>
+                          <xs:element name="a"/>
+                          <xs:element name="b"/>
+                        </xs:sequence>
+                        <xs:sequence>
+                          <xs:element name="c"/>
+                          <xs:element name="b"/>
+                        </xs:sequence>
+                      </xs:choice>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """;
+        XercesSchemaCompiler.CompiledSchema compiled = XercesSchemaCompiler.compile(
+                new StreamSource(new StringReader(schema)),
+                null);
+
+        assertThat(compiled.choiceIndex().match(
+                        new QName("value"),
+                        new QName("b"),
+                        java.util.List.of(
+                                new DocumentPathTracker.SeenElement(new QName("c"), 1))))
+                .isEmpty();
+        assertThat(compile(schema)
+                        .validate(xml("<value><c/><b/></value>"))
+                        .valid())
+                .isTrue();
+    }
+
+    @Test
+    void boundsChoiceBranchElementsRenderedInMessages() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value">
+                    <xs:complexType>
+                      <xs:choice>
+                        <xs:sequence>
+                          <xs:element name="one"/>
+                          <xs:element name="two"/>
+                          <xs:element name="three"/>
+                          <xs:element name="four"/>
+                          <xs:element name="five"/>
+                          <xs:element name="six"/>
+                          <xs:element name="seven"/>
+                          <xs:element name="eight"/>
+                        </xs:sequence>
+                        <xs:element name="sms"/>
+                      </xs:choice>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue =
+                validator.validate(xml("<value><one/><sms/></value>")).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("CHOICE_ALREADY_SELECTED");
+        assertThat(issue.message())
+                .contains("<two>", "<six>")
+                .doesNotContain("<seven>", "<eight>");
     }
 
     @Test
@@ -1231,6 +1304,53 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void rejectsNonFileSchemaSystemIds() {
+        StreamSource source = new StreamSource();
+        source.setSystemId("https://example.com/schema.xsd");
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(source))
+                .withMessageContaining("local file");
+    }
+
+    @Test
+    void wrapsMalformedSchemaLocations() {
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> compile("""
+                        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                          <xs:include schemaLocation="invalid location.xsd"/>
+                        </xs:schema>
+                        """))
+                .withMessageContaining("system ID");
+    }
+
+    @Test
+    void closesSchemaSourceStreamsAndReaders() throws Exception {
+        AtomicBoolean streamClosed = new AtomicBoolean();
+        var stream = new ByteArrayInputStream(CHOICE_SCHEMA.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public void close() throws IOException {
+                streamClosed.set(true);
+                super.close();
+            }
+        };
+        AtomicBoolean readerClosed = new AtomicBoolean();
+        var reader = new StringReader(CHOICE_SCHEMA) {
+            @Override
+            public void close() {
+                readerClosed.set(true);
+                super.close();
+            }
+        };
+
+        BetterXsdValidator.compile(new StreamSource(stream));
+        BetterXsdValidator.compile(new StreamSource(reader));
+
+        assertThat(streamClosed).isTrue();
+        assertThat(readerClosed).isTrue();
+    }
+
+    @Test
     void resolvesFileIncludesWhenTheSourceHasABaseUri(@TempDir Path directory)
             throws Exception {
         Files.writeString(directory.resolve("types.xsd"), """
@@ -1304,6 +1424,58 @@ class BetterXsdValidatorTest {
         }
 
         assertThat(reports).allMatch(ValidationReport::valid);
+    }
+
+    @Test
+    void closesStreamsReturnedByAnExplicitSchemaResolver() throws Exception {
+        String root = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:include schemaLocation="memory:/types.xsd"/>
+                  <xs:element name="id" type="Identifier"/>
+                </xs:schema>
+                """;
+        String dependency = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Identifier">
+                    <xs:restriction base="xs:string"/>
+                  </xs:simpleType>
+                </xs:schema>
+                """;
+        AtomicBoolean byteStreamClosed = new AtomicBoolean();
+        AtomicBoolean characterStreamClosed = new AtomicBoolean();
+
+        BetterXsdValidator.compile(
+                new StreamSource(new StringReader(root)),
+                (type, namespaceUri, publicId, systemId, baseUri) -> {
+                    var input = new DOMInputImpl();
+                    input.setSystemId(systemId);
+                    input.setByteStream(new ByteArrayInputStream(
+                            dependency.getBytes(StandardCharsets.UTF_8)) {
+                        @Override
+                        public void close() throws IOException {
+                            byteStreamClosed.set(true);
+                            super.close();
+                        }
+                    });
+                    return input;
+                });
+        BetterXsdValidator.compile(
+                new StreamSource(new StringReader(root)),
+                (type, namespaceUri, publicId, systemId, baseUri) -> {
+                    var input = new DOMInputImpl();
+                    input.setSystemId(systemId);
+                    input.setCharacterStream(new StringReader(dependency) {
+                        @Override
+                        public void close() {
+                            characterStreamClosed.set(true);
+                            super.close();
+                        }
+                    });
+                    return input;
+                });
+
+        assertThat(byteStreamClosed).isTrue();
+        assertThat(characterStreamClosed).isTrue();
     }
 
     @Test

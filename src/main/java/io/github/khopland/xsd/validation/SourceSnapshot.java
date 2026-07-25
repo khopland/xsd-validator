@@ -22,20 +22,30 @@ record SourceSnapshot(byte[] bytes, String systemId) {
         try {
             InputStream inputStream = streamSource.getInputStream();
             if (inputStream != null) {
-                return new SourceSnapshot(inputStream.readAllBytes(), streamSource.getSystemId());
+                try (inputStream) {
+                    return new SourceSnapshot(
+                            inputStream.readAllBytes(),
+                            streamSource.getSystemId());
+                }
             }
 
             Reader reader = streamSource.getReader();
             if (reader != null) {
-                StringWriter text = new StringWriter();
-                reader.transferTo(text);
-                return new SourceSnapshot(
-                        text.toString().getBytes(StandardCharsets.UTF_8),
-                        streamSource.getSystemId());
+                try (reader) {
+                    StringWriter text = new StringWriter();
+                    reader.transferTo(text);
+                    return new SourceSnapshot(
+                            text.toString().getBytes(StandardCharsets.UTF_8),
+                            streamSource.getSystemId());
+                }
             }
 
             if (streamSource.getSystemId() != null) {
                 URI uri = URI.create(streamSource.getSystemId());
+                if (uri.isAbsolute() && !"file".equalsIgnoreCase(uri.getScheme())) {
+                    throw new SchemaCompilationException(
+                            "Only local file schema system IDs are allowed.");
+                }
                 Path path = uri.isAbsolute() ? Path.of(uri) : Path.of(streamSource.getSystemId());
                 return new SourceSnapshot(Files.readAllBytes(path), path.toUri().toString());
             }
