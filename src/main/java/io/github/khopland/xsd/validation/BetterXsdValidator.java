@@ -10,9 +10,13 @@ import java.util.Objects;
  */
 public final class BetterXsdValidator {
     private final XercesSchemaCompiler.CompiledSchema compiledSchema;
+    private final ValidationLimits limits;
 
-    private BetterXsdValidator(XercesSchemaCompiler.CompiledSchema compiledSchema) {
+    private BetterXsdValidator(
+            XercesSchemaCompiler.CompiledSchema compiledSchema,
+            ValidationLimits limits) {
         this.compiledSchema = compiledSchema;
+        this.limits = limits;
     }
 
     /**
@@ -24,7 +28,9 @@ public final class BetterXsdValidator {
      */
     public static BetterXsdValidator compile(Source schemaSource)
             throws SchemaCompilationException {
-        return new BetterXsdValidator(XercesSchemaCompiler.compile(schemaSource, null));
+        return new BetterXsdValidator(
+                XercesSchemaCompiler.compile(schemaSource, null),
+                ValidationLimits.DEFAULT);
     }
 
     /**
@@ -39,9 +45,23 @@ public final class BetterXsdValidator {
             Source schemaSource,
             LSResourceResolver resolver)
             throws SchemaCompilationException {
-        return new BetterXsdValidator(XercesSchemaCompiler.compile(
-                schemaSource,
-                Objects.requireNonNull(resolver, "resolver")));
+        return new BetterXsdValidator(
+                XercesSchemaCompiler.compile(
+                        schemaSource,
+                        Objects.requireNonNull(resolver, "resolver")),
+                ValidationLimits.DEFAULT);
+    }
+
+    /**
+     * Returns a validator with the same compiled schema and different processing limits.
+     *
+     * @param limits hard limits applied to each validation
+     * @return a reusable, thread-safe validator sharing this compiled schema
+     */
+    public BetterXsdValidator withLimits(ValidationLimits limits) {
+        return new BetterXsdValidator(
+                compiledSchema,
+                Objects.requireNonNull(limits, "limits"));
     }
 
     /**
@@ -51,6 +71,6 @@ public final class BetterXsdValidator {
      * @return the immutable validation report
      */
     public ValidationReport validate(Source xmlSource) {
-        return ValidationObservation.validate(compiledSchema, xmlSource);
+        return ValidationObservation.validate(compiledSchema, xmlSource, limits);
     }
 }

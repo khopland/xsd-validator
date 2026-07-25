@@ -45,8 +45,6 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
             "http://apache.org/xml/properties/internal/error-handler";
     private static final String ERROR_REPORTER =
             "http://apache.org/xml/properties/internal/error-reporter";
-    private static final int MAX_DEPTH = 256;
-    private static final int MAX_DISTINCT_CHILD_NAMES = 100;
     private static final int MAX_RETAINED_CHILDREN = 100;
     private static final int MAX_RETAINED_ATTRIBUTES = 100;
     private static final int MAX_RETAINED_DIAGNOSTICS = 1_000;
@@ -54,6 +52,7 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
 
     private final ValidatorHandler validator;
     private final PSVIProvider psviProvider;
+    private final ValidationLimits limits;
     private final Deque<Frame> path = new ArrayDeque<>();
     private final Map<QName, Integer> rootCounts = new HashMap<>();
     private final List<RawDiagnostic> diagnostics = new ArrayList<>();
@@ -67,22 +66,27 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
     private @Nullable String pendingKey;
     private @Nullable Object @Nullable [] pendingArguments;
 
-    private ValidationObservation(ValidatorHandler validator) {
+    private ValidationObservation(
+            ValidatorHandler validator,
+            ValidationLimits limits) {
         this.validator = validator;
         this.psviProvider = (PSVIProvider) validator;
+        this.limits = limits;
         validator.setContentHandler(new CoverageHandler());
     }
 
     static ValidationReport validate(
             XercesSchemaCompiler.CompiledSchema compiledSchema,
-            Source source) {
+            Source source,
+            ValidationLimits limits) {
         ValidatorHandler validator = compiledSchema.schema().newValidatorHandler();
         validator.setResourceResolver((type, namespaceUri, publicId, systemId, baseUri) -> {
             throw new LSException(
                     LSException.PARSE_ERR,
                     "External schema resolution is disabled during validation.");
         });
-        ValidationObservation observation = new ValidationObservation(validator);
+        ValidationObservation observation =
+                new ValidationObservation(validator, limits);
         boolean complete = true;
 
         try {
@@ -234,13 +238,14 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
             String qName,
             Attributes attributes)
             throws SAXException {
-        if (path.size() == MAX_DEPTH) {
+        if (path.size() == limits.maxElementDepth()) {
             throw new SAXException("XML nesting depth exceeds the validation limit.");
         }
         QName name = new QName(uri == null ? "" : uri, localName(localName, qName));
         Map<QName, Integer> counts =
                 path.isEmpty() ? rootCounts : path.peekLast().childCounts;
-        if (!counts.containsKey(name) && counts.size() == MAX_DISTINCT_CHILD_NAMES) {
+        if (!counts.containsKey(name)
+                && counts.size() == limits.maxDistinctChildNamesPerElement()) {
             throw new SAXException("Distinct child names exceed the validation limit.");
         }
         int index = counts.merge(name, 1, Integer::sum);

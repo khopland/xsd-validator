@@ -1450,6 +1450,27 @@ class BetterXsdValidatorTest {
         assertThat(namesReport.issues()).singleElement()
                 .extracting(ValidationIssue::code)
                 .isEqualTo("XML_PROCESSING_ERROR");
+
+        assertThat(deepValidator
+                        .withLimits(new ValidationLimits(257, 100))
+                        .validate(xml(tooDeep))
+                        .valid())
+                .isTrue();
+        assertThat(namesValidator
+                        .withLimits(new ValidationLimits(256, 101))
+                        .validate(xml("<root>" + distinctChildren + "</root>"))
+                        .complete())
+                .isTrue();
+    }
+
+    @Test
+    void rejectsNonPositiveValidationLimits() {
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ValidationLimits(0, 100))
+                .withMessageContaining("maxElementDepth");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ValidationLimits(256, 0))
+                .withMessageContaining("maxDistinctChildNamesPerElement");
     }
 
     @Test
