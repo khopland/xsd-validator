@@ -67,30 +67,6 @@ This library validates XML against XSD 1.0. Business rules, code-list rules,
 Schematron assertions, and requirements not expressed by the compiled XSD are
 outside its validation result.
 
-## Publishing
-
-Every push to `main` publishes the current `-SNAPSHOT` version to GitHub
-Packages after a successful build.
-
-Stable SemVer tags publish to Maven Central. Before the first release:
-
-1. Sign in to the [Central Portal](https://central.sonatype.com/) with GitHub
-   and verify the `io.github.khopland` namespace.
-2. Add a `maven-central` GitHub environment with the secrets
-   `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_TOKEN`,
-   `MAVEN_GPG_PRIVATE_KEY`, and `MAVEN_GPG_PASSPHRASE`.
-3. Publish the signing key's public key to a public keyserver.
-
-Tag the commit and push the tag:
-
-```shell
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow uses the tag as the Maven version, signs the artifacts, and
-publishes them through the Central Portal.
-
 ## Stable issue codes
 
 | Family | Codes |
