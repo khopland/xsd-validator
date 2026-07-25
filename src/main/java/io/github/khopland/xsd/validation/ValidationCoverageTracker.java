@@ -4,6 +4,7 @@ import org.apache.xerces.xs.ElementPSVI;
 import org.apache.xerces.xs.ItemPSVI;
 import org.apache.xerces.xs.PSVIProvider;
 import org.apache.xerces.xs.StringList;
+import org.jspecify.annotations.Nullable;
 import org.xml.sax.Attributes;
 import org.xml.sax.helpers.DefaultHandler;
 
@@ -52,7 +53,7 @@ final class ValidationCoverageTracker extends DefaultHandler {
         return skippedOrLaxContent;
     }
 
-    private static boolean hasNoErrors(StringList errors) {
+    private static boolean hasNoErrors(@Nullable StringList errors) {
         return errors == null || errors.getLength() == 0;
     }
 }

@@ -1,18 +1,15 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import javax.xml.namespace.QName;
 import org.apache.xerces.xs.XSTypeDefinition;
+import org.jspecify.annotations.Nullable;
 import org.xml.sax.Attributes;
 import org.xml.sax.ContentHandler;
 import org.xml.sax.Locator;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
+
+import javax.xml.namespace.QName;
+import java.util.*;
 
 final class DocumentPathTracker extends DefaultHandler {
     private static final int MAX_DEPTH = 256;
@@ -23,7 +20,7 @@ final class DocumentPathTracker extends DefaultHandler {
     private final ContentHandler delegate;
     private final Deque<Frame> path = new ArrayDeque<>();
     private final Map<QName, Integer> rootCounts = new HashMap<>();
-    private Locator locator;
+    private @Nullable Locator locator;
 
     DocumentPathTracker(ContentHandler delegate) {
         this.delegate = delegate;
@@ -142,7 +139,7 @@ final class DocumentPathTracker extends DefaultHandler {
                 column());
     }
 
-    void schemaType(XSTypeDefinition schemaType) {
+    void schemaType(@Nullable XSTypeDefinition schemaType) {
         if (!path.isEmpty()) {
             path.peekLast().schemaType = schemaType;
         }
@@ -156,7 +153,7 @@ final class DocumentPathTracker extends DefaultHandler {
         return locator == null ? -1 : locator.getColumnNumber();
     }
 
-    private static String localName(String localName, String qName) {
+    private static String localName(@Nullable String localName, String qName) {
         if (localName != null && !localName.isEmpty()) {
             return localName;
         }
@@ -167,8 +164,8 @@ final class DocumentPathTracker extends DefaultHandler {
     private static List<QName> attributeNames(Attributes attributes) {
         List<QName> names = new ArrayList<>();
         for (int index = 0;
-                index < attributes.getLength() && names.size() < MAX_RETAINED_ATTRIBUTES;
-                index++) {
+             index < attributes.getLength() && names.size() < MAX_RETAINED_ATTRIBUTES;
+             index++) {
             String qName = attributes.getQName(index);
             int separator = qName.indexOf(':');
             String prefix = separator < 0 ? "" : qName.substring(0, separator);
@@ -185,7 +182,7 @@ final class DocumentPathTracker extends DefaultHandler {
         private final int index;
         private final int line;
         private final List<QName> attributes;
-        private XSTypeDefinition schemaType;
+        private @Nullable XSTypeDefinition schemaType;
         private final Map<QName, Integer> childCounts = new HashMap<>();
         private final List<SeenElement> children = new ArrayList<>();
 
@@ -209,10 +206,10 @@ final class DocumentPathTracker extends DefaultHandler {
 
     record Context(
             String path,
-            QName actualElement,
-            QName parentElement,
-            XSTypeDefinition actualType,
-            XSTypeDefinition parentType,
+            @Nullable QName actualElement,
+            @Nullable QName parentElement,
+            @Nullable XSTypeDefinition actualType,
+            @Nullable XSTypeDefinition parentType,
             List<SeenElement> previousSiblings,
             List<SeenElement> children,
             List<QName> attributes,

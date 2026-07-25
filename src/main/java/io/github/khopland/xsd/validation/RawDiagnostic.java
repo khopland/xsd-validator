@@ -1,27 +1,29 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.List;
-import javax.xml.namespace.QName;
 import org.apache.xerces.xs.XSTypeDefinition;
+import org.jspecify.annotations.Nullable;
+
+import javax.xml.namespace.QName;
+import java.util.List;
 
 record RawDiagnostic(
         String domain,
         String key,
-        Object[] arguments,
+        @Nullable Object[] arguments,
         ValidationSeverity severity,
         String path,
         int line,
         int column,
-        QName actualElement,
-        QName parentElement,
-        XSTypeDefinition actualType,
-        XSTypeDefinition parentType,
+        @Nullable QName actualElement,
+        @Nullable QName parentElement,
+        @Nullable XSTypeDefinition actualType,
+        @Nullable XSTypeDefinition parentType,
         List<DocumentPathTracker.SeenElement> previousSiblings,
         List<DocumentPathTracker.SeenElement> children,
         List<QName> attributes) {
 
     RawDiagnostic {
-        arguments = arguments == null ? new Object[0] : arguments.clone();
+        arguments = arguments.clone();
         previousSiblings = List.copyOf(previousSiblings);
         children = List.copyOf(children);
         attributes = List.copyOf(attributes);

@@ -618,7 +618,7 @@ class BetterXsdValidatorTest {
         ValidationIssue issue = report.issues().get(0);
         assertThat(issue.code()).isEqualTo("ROOT_NAMESPACE_MISMATCH");
         assertThat(issue.message()).contains("urn:wrong", "urn:contact");
-        assertThat(issue.actualElement().getNamespaceURI()).isEqualTo("urn:wrong");
+        assertThat(issue.actualElement()).isEqualTo(new QName("urn:wrong", "contact"));
     }
 
     @Test
@@ -1491,6 +1491,15 @@ class BetterXsdValidatorTest {
                         </xs:schema>
                         """))
                 .withMessageContaining("system ID");
+    }
+
+    @Test
+    void allowsImportsWithoutASchemaLocation() throws SchemaCompilationException {
+        assertThat(compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:import namespace="urn:dependency"/>
+                </xs:schema>
+                """)).isNotNull();
     }
 
     @Test

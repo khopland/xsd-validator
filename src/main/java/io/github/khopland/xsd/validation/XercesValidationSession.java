@@ -1,13 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import java.io.IOException;
-import java.util.List;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.Source;
-import javax.xml.transform.sax.SAXSource;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.ValidatorHandler;
 import org.apache.xerces.impl.XMLErrorReporter;
 import org.apache.xerces.impl.xs.XSMessageFormatter;
 import org.apache.xerces.jaxp.SAXParserFactoryImpl;
@@ -17,6 +9,15 @@ import org.w3c.dom.ls.LSException;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Source;
+import javax.xml.transform.sax.SAXSource;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.ValidatorHandler;
+import java.io.IOException;
+import java.util.List;
 
 final class XercesValidationSession {
     private static final String ERROR_HANDLER =
@@ -50,9 +51,9 @@ final class XercesValidationSession {
             reader.setContentHandler(pathTracker);
             reader.parse(inputSource(source));
         } catch (SAXException
-                | IOException
-                | ParserConfigurationException
-                | RuntimeException exception) {
+                 | IOException
+                 | ParserConfigurationException
+                 | RuntimeException exception) {
             complete = false;
             if (!collector.hasFatal()) {
                 collector.addFatal("xml-processing-stopped");

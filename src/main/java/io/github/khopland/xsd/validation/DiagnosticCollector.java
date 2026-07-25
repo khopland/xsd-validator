@@ -1,10 +1,12 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.xerces.xni.XNIException;
 import org.apache.xerces.xni.parser.XMLErrorHandler;
 import org.apache.xerces.xni.parser.XMLParseException;
+import org.jspecify.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 final class DiagnosticCollector implements XMLErrorHandler {
     private static final int MAX_RETAINED_DIAGNOSTICS = 1_000;
@@ -15,14 +17,14 @@ final class DiagnosticCollector implements XMLErrorHandler {
     private boolean truncated;
     private boolean hasErrors;
     private boolean hasFatal;
-    private String pendingKey;
-    private Object[] pendingArguments;
+    private @Nullable String pendingKey;
+    private @Nullable Object @Nullable [] pendingArguments;
 
     DiagnosticCollector(DocumentPathTracker pathTracker) {
         this.pathTracker = pathTracker;
     }
 
-    void captureArguments(String key, Object[] arguments) {
+    void captureArguments(String key, @Nullable Object @Nullable [] arguments) {
         pendingKey = key;
         pendingArguments = arguments == null ? new Object[0] : arguments.clone();
     }
@@ -78,7 +80,7 @@ final class DiagnosticCollector implements XMLErrorHandler {
     private void add(
             String domain,
             String key,
-            XMLParseException exception,
+            @Nullable XMLParseException exception,
             ValidationSeverity severity) {
         rawEventCount++;
         hasErrors |= severity != ValidationSeverity.WARNING;
@@ -90,7 +92,9 @@ final class DiagnosticCollector implements XMLErrorHandler {
             return;
         }
         DocumentPathTracker.Context context = pathTracker.context();
-        Object[] arguments = key.equals(pendingKey) ? pendingArguments : null;
+        @Nullable Object[] arguments = key.equals(pendingKey) && pendingArguments != null
+                ? pendingArguments
+                : new Object[0];
         pendingKey = null;
         pendingArguments = null;
         diagnostics.add(new RawDiagnostic(

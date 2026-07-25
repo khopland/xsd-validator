@@ -1,20 +1,20 @@
 package io.github.khopland.xsd.validation;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-import java.io.StringReader;
-import java.io.StringWriter;
+import org.jspecify.annotations.Nullable;
+import org.xml.sax.InputSource;
+
+import javax.xml.transform.Source;
+import javax.xml.transform.stream.StreamSource;
+import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import javax.xml.transform.Source;
-import javax.xml.transform.stream.StreamSource;
-import org.xml.sax.InputSource;
 
-record SourceSnapshot(byte[] bytes, String characters, String systemId) {
+record SourceSnapshot(
+        byte[] bytes,
+        @Nullable String characters,
+        @Nullable String systemId) {
     static SourceSnapshot read(Source source) throws SchemaCompilationException {
         if (!(source instanceof StreamSource streamSource)) {
             throw new SchemaCompilationException(
