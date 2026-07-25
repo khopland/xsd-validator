@@ -9,7 +9,10 @@ import java.util.regex.Pattern;
 import javax.xml.namespace.QName;
 
 final class DiagnosticMapper {
+    private static final int MAX_EXPECTED_ELEMENTS = 5;
     private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[\\p{Alnum}_.:-]{1,100}");
+    private static final Pattern QUALIFIED_ELEMENT =
+            Pattern.compile("^\"([^\"]*)\":([\\p{Alnum}_.-]+)$");
 
     private DiagnosticMapper() {
     }
@@ -69,6 +72,31 @@ final class DiagnosticMapper {
             return issue(diagnostic, "CHOICE_ALREADY_SELECTED", message);
         }
 
+        Optional<ChoiceIndex.IncompleteMatch> incompleteChoice =
+                incompleteChoice(diagnostic, choices);
+        if (incompleteChoice.isPresent()) {
+            ChoiceIndex.IncompleteMatch match = incompleteChoice.get();
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            List<QName> expectedPreview = expected.preview().isEmpty()
+                    ? match.remainingElements().stream()
+                            .map(name -> new QName(
+                                    namespace(diagnostic.actualElement()),
+                                    name))
+                            .limit(MAX_EXPECTED_ELEMENTS)
+                            .toList()
+                    : expected.preview();
+            String message = element(match.selectedBy().name())
+                    + location(match.selectedBy().line())
+                    + " selected a choice branch that is incomplete. Add "
+                    + renderElements(match.remainingElements())
+                    + " before " + element(diagnostic.actualElement()) + " closes.";
+            return issue(
+                    diagnostic,
+                    "CHOICE_BRANCH_INCOMPLETE",
+                    message,
+                    expectedPreview);
+        }
+
         if (diagnostic.key().startsWith("cvc-datatype-valid")) {
             String typeName = safeArgument(diagnostic.arguments(), 1).orElse("the declared type");
             String message = "Element " + element(diagnostic.actualElement())
@@ -78,6 +106,92 @@ final class DiagnosticMapper {
 
         if (diagnostic.severity() == io.github.khopland.xsd.validation.ValidationSeverity.FATAL) {
             return issue(diagnostic, "MALFORMED_XML", "XML parsing stopped before the document ended.");
+        }
+
+        if ("cvc-complex-type.2.4.e".equals(diagnostic.key())
+                || "cvc-complex-type.2.4.f".equals(diagnostic.key())) {
+            int maximum = integerArgument(
+                    diagnostic.arguments(),
+                    "cvc-complex-type.2.4.e".equals(diagnostic.key()) ? 2 : 1);
+            ExpectedElements expected = "cvc-complex-type.2.4.e".equals(diagnostic.key())
+                    ? expectedElements(diagnostic.arguments(), 1)
+                    : ExpectedElements.EMPTY;
+            String message = "Element " + element(diagnostic.actualElement())
+                    + " exceeds its maximum occurrence"
+                    + (maximum > 0 ? " of " + maximum : "")
+                    + (expected.preview().isEmpty()
+                            ? "."
+                            : "; expected " + expected.description() + " instead.");
+            return issue(
+                    diagnostic,
+                    "MAX_OCCURS_EXCEEDED",
+                    message,
+                    expected.preview());
+        }
+
+        if ("cvc-complex-type.2.4.g".equals(diagnostic.key())
+                || "cvc-complex-type.2.4.h".equals(diagnostic.key())) {
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            int required = integerArgument(
+                    diagnostic.arguments(),
+                    "cvc-complex-type.2.4.h".equals(diagnostic.key()) ? 3 : -1);
+            return issue(
+                    diagnostic,
+                    "MIN_OCCURS_NOT_MET",
+                    "Element " + element(diagnostic.actualElement())
+                            + " occurs too early; add "
+                            + count(required) + expected.description() + " first.",
+                    expected.preview());
+        }
+
+        if ("cvc-complex-type.2.4.i".equals(diagnostic.key())
+                || "cvc-complex-type.2.4.j".equals(diagnostic.key())) {
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            int required = integerArgument(
+                    diagnostic.arguments(),
+                    "cvc-complex-type.2.4.j".equals(diagnostic.key()) ? 3 : -1);
+            return issue(
+                    diagnostic,
+                    "MIN_OCCURS_NOT_MET",
+                    "Element " + element(diagnostic.actualElement())
+                            + " is incomplete; add "
+                            + count(required) + expected.description()
+                            + " before it closes.",
+                    expected.preview());
+        }
+
+        if ("cvc-complex-type.2.4.a".equals(diagnostic.key())) {
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            return issue(
+                    diagnostic,
+                    "UNEXPECTED_ELEMENT",
+                    "Element " + element(diagnostic.actualElement())
+                            + " is not permitted here; expected "
+                            + expected.description() + ".",
+                    expected.preview());
+        }
+
+        if ("cvc-complex-type.2.4.b".equals(diagnostic.key())) {
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            return issue(
+                    diagnostic,
+                    "MISSING_ELEMENT",
+                    "Element " + element(diagnostic.actualElement())
+                            + " is incomplete; add " + expected.description()
+                            + " before it closes.",
+                    expected.preview());
+        }
+
+        if ("cvc-complex-type.2.4.d".equals(diagnostic.key())
+                && diagnostic.actualElement() != null
+                && diagnostic.previousSiblings().stream()
+                        .map(DocumentPathTracker.SeenElement::name)
+                        .anyMatch(diagnostic.actualElement()::equals)) {
+            return issue(
+                    diagnostic,
+                    "DUPLICATE_ELEMENT",
+                    "Element " + element(diagnostic.actualElement())
+                            + " already occurred and cannot occur again here.");
         }
 
         if (diagnostic.key().startsWith("cvc-complex-type.2.4")) {
@@ -109,6 +223,24 @@ final class DiagnosticMapper {
                 diagnostic.previousSiblings());
     }
 
+    private static Optional<ChoiceIndex.IncompleteMatch> incompleteChoice(
+            RawDiagnostic diagnostic,
+            ChoiceIndex choices) {
+        if (!"cvc-complex-type.2.4.b".equals(diagnostic.key())
+                || diagnostic.actualElement() == null) {
+            return Optional.empty();
+        }
+        return choices.incomplete(
+                diagnostic.actualElement().getLocalPart(),
+                diagnostic.children()).filter(match -> {
+                    ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+                    return expected.preview().isEmpty()
+                            || expected.preview().stream()
+                                    .map(QName::getLocalPart)
+                                    .anyMatch(match.remainingElements()::contains);
+                });
+    }
+
     private static boolean isGenericTypeDuplicate(
             RawDiagnostic diagnostic,
             List<IssueBuilder> issues) {
@@ -129,6 +261,73 @@ final class DiagnosticMapper {
         String candidate = arguments[index].toString();
         return SAFE_TYPE_NAME.matcher(candidate).matches()
                 ? Optional.of(candidate)
+                : Optional.empty();
+    }
+
+    private static int integerArgument(Object[] arguments, int index) {
+        if (index < 0 || arguments.length <= index || arguments[index] == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(arguments[index].toString());
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private static String count(int count) {
+        return count > 1 ? count + " more occurrences of " : "";
+    }
+
+    private static ExpectedElements expectedElements(Object[] arguments, int index) {
+        if (arguments.length <= index || arguments[index] == null) {
+            return ExpectedElements.EMPTY;
+        }
+        String value = arguments[index].toString().trim();
+        if (value.startsWith("{") && value.endsWith("}")) {
+            value = value.substring(1, value.length() - 1);
+        }
+
+        List<QName> elements = splitTerms(value).stream()
+                .map(DiagnosticMapper::parseElement)
+                .flatMap(Optional::stream)
+                .toList();
+        return new ExpectedElements(
+                elements.stream().limit(MAX_EXPECTED_ELEMENTS).toList(),
+                elements.size());
+    }
+
+    private static List<String> splitTerms(String value) {
+        List<String> terms = new ArrayList<>();
+        boolean quoted = false;
+        int nested = 0;
+        int start = 0;
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character == '"') {
+                quoted = !quoted;
+            } else if (!quoted && (character == '(' || character == '[')) {
+                nested++;
+            } else if (!quoted && (character == ')' || character == ']')) {
+                nested--;
+            } else if (!quoted && nested == 0 && character == ',') {
+                terms.add(value.substring(start, index).trim());
+                start = index + 1;
+            }
+        }
+        if (start < value.length()) {
+            terms.add(value.substring(start).trim());
+        }
+        return terms;
+    }
+
+    private static Optional<QName> parseElement(String term) {
+        var qualified = QUALIFIED_ELEMENT.matcher(term);
+        if (qualified.matches()) {
+            return Optional.of(new QName(qualified.group(1), qualified.group(2)));
+        }
+        return SAFE_TYPE_NAME.matcher(term).matches() && !term.contains(":")
+                ? Optional.of(new QName(term))
                 : Optional.empty();
     }
 
@@ -160,6 +359,14 @@ final class DiagnosticMapper {
     }
 
     private static IssueBuilder issue(RawDiagnostic diagnostic, String code, String message) {
+        return issue(diagnostic, code, message, List.of());
+    }
+
+    private static IssueBuilder issue(
+            RawDiagnostic diagnostic,
+            String code,
+            String message,
+            List<QName> expectedElements) {
         return new IssueBuilder(
                 diagnostic.severity(),
                 code,
@@ -168,6 +375,7 @@ final class DiagnosticMapper {
                 diagnostic.line(),
                 diagnostic.column(),
                 diagnostic.actualElement(),
+                expectedElements,
                 new ArrayList<>(List.of(diagnostic.key())));
     }
 
@@ -179,6 +387,7 @@ final class DiagnosticMapper {
         private final int line;
         private final int column;
         private final QName actualElement;
+        private final List<QName> expectedElements;
         private final List<String> schemaCodes;
 
         private IssueBuilder(
@@ -189,6 +398,7 @@ final class DiagnosticMapper {
                 int line,
                 int column,
                 QName actualElement,
+                List<QName> expectedElements,
                 List<String> schemaCodes) {
             this.severity = severity;
             this.code = code;
@@ -197,6 +407,7 @@ final class DiagnosticMapper {
             this.line = line;
             this.column = column;
             this.actualElement = actualElement;
+            this.expectedElements = expectedElements;
             this.schemaCodes = schemaCodes;
         }
 
@@ -209,8 +420,26 @@ final class DiagnosticMapper {
                     line,
                     column,
                     actualElement,
-                    List.of(),
+                    expectedElements,
                     schemaCodes);
+        }
+    }
+
+    private record ExpectedElements(List<QName> preview, int total) {
+        private static final ExpectedElements EMPTY = new ExpectedElements(List.of(), 0);
+
+        private String description() {
+            if (preview.isEmpty()) {
+                return "schema-required content";
+            }
+            String rendered = preview.stream()
+                    .map(DiagnosticMapper::element)
+                    .reduce((left, right) -> left + ", " + right)
+                    .orElseThrow();
+            if (total > preview.size()) {
+                rendered += ", and " + (total - preview.size()) + " more";
+            }
+            return preview.size() == 1 && total == 1 ? rendered : "one of " + rendered;
         }
     }
 }

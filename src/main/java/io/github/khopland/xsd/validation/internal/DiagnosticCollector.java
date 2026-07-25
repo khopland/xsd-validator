@@ -8,8 +8,14 @@ import org.apache.xerces.xni.parser.XMLErrorHandler;
 import org.apache.xerces.xni.parser.XMLParseException;
 
 final class DiagnosticCollector implements XMLErrorHandler {
+    private static final int MAX_RETAINED_DIAGNOSTICS = 1_000;
+
     private final DocumentPathTracker pathTracker;
     private final List<RawDiagnostic> diagnostics = new ArrayList<>();
+    private int rawEventCount;
+    private boolean truncated;
+    private boolean hasErrors;
+    private boolean hasFatal;
     private String pendingKey;
     private Object[] pendingArguments;
 
@@ -24,6 +30,22 @@ final class DiagnosticCollector implements XMLErrorHandler {
 
     List<RawDiagnostic> diagnostics() {
         return List.copyOf(diagnostics);
+    }
+
+    int rawEventCount() {
+        return rawEventCount;
+    }
+
+    boolean truncated() {
+        return truncated;
+    }
+
+    boolean hasErrors() {
+        return hasErrors;
+    }
+
+    boolean hasFatal() {
+        return hasFatal;
     }
 
     void addFatal(String key) {
@@ -53,6 +75,15 @@ final class DiagnosticCollector implements XMLErrorHandler {
             String key,
             XMLParseException exception,
             ValidationSeverity severity) {
+        rawEventCount++;
+        hasErrors |= severity != ValidationSeverity.WARNING;
+        hasFatal |= severity == ValidationSeverity.FATAL;
+        if (diagnostics.size() == MAX_RETAINED_DIAGNOSTICS) {
+            truncated = true;
+            pendingKey = null;
+            pendingArguments = null;
+            return;
+        }
         DocumentPathTracker.Context context = pathTracker.context();
         Object[] arguments = key.equals(pendingKey) ? pendingArguments : null;
         pendingKey = null;
@@ -67,6 +98,7 @@ final class DiagnosticCollector implements XMLErrorHandler {
                 exception == null ? context.column() : exception.getColumnNumber(),
                 context.actualElement(),
                 context.parentElement(),
-                context.previousSiblings()));
+                context.previousSiblings(),
+                context.children()));
     }
 }

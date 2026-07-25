@@ -14,10 +14,12 @@ record RawDiagnostic(
         int column,
         QName actualElement,
         QName parentElement,
-        List<DocumentPathTracker.SeenElement> previousSiblings) {
+        List<DocumentPathTracker.SeenElement> previousSiblings,
+        List<DocumentPathTracker.SeenElement> children) {
 
     RawDiagnostic {
         arguments = arguments == null ? new Object[0] : arguments.clone();
         previousSiblings = List.copyOf(previousSiblings);
+        children = List.copyOf(children);
     }
 }

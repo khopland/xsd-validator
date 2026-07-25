@@ -3,7 +3,6 @@ package io.github.khopland.xsd.validation.internal;
 import io.github.khopland.xsd.validation.ValidationCoverage;
 import io.github.khopland.xsd.validation.ValidationIssue;
 import io.github.khopland.xsd.validation.ValidationReport;
-import io.github.khopland.xsd.validation.ValidationSeverity;
 import java.io.IOException;
 import java.util.List;
 import javax.xml.XMLConstants;
@@ -50,8 +49,7 @@ public final class XercesValidationSession {
                 | ParserConfigurationException
                 | RuntimeException exception) {
             complete = false;
-            if (collector.diagnostics().stream()
-                    .noneMatch(diagnostic -> diagnostic.severity() == ValidationSeverity.FATAL)) {
+            if (!collector.hasFatal()) {
                 collector.addFatal("xml-processing-stopped");
             }
         }
@@ -60,14 +58,14 @@ public final class XercesValidationSession {
                 collector.diagnostics(),
                 compiledSchema.identity(),
                 compiledSchema.choiceIndex());
-        boolean truncated = allIssues.size() > MAX_ISSUES;
-        List<ValidationIssue> issues =
-                truncated ? allIssues.subList(0, MAX_ISSUES) : allIssues;
-        boolean valid = complete && allIssues.stream()
-                .noneMatch(issue -> issue.severity() != ValidationSeverity.WARNING);
+        boolean truncated = collector.truncated() || allIssues.size() > MAX_ISSUES;
+        List<ValidationIssue> issues = allIssues.size() > MAX_ISSUES
+                ? allIssues.subList(0, MAX_ISSUES)
+                : allIssues;
+        boolean valid = complete && !collector.hasErrors();
         return new ValidationReport(
                 valid,
-                collector.diagnostics().size(),
+                collector.rawEventCount(),
                 issues,
                 compiledSchema.identity(),
                 new ValidationCoverage(complete, truncated, false));

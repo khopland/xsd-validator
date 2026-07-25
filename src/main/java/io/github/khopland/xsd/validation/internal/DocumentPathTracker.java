@@ -14,6 +14,8 @@ import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
 final class DocumentPathTracker extends DefaultHandler {
+    private static final int MAX_RETAINED_CHILDREN = 100;
+
     private final ContentHandler delegate;
     private final Deque<Frame> path = new ArrayDeque<>();
     private final Map<QName, Integer> rootCounts = new HashMap<>();
@@ -66,7 +68,7 @@ final class DocumentPathTracker extends DefaultHandler {
         delegate.endElement(uri, localName, qName);
         Frame completed = path.removeLast();
         if (!path.isEmpty()) {
-            path.peekLast().children.add(new SeenElement(completed.name, completed.line));
+            path.peekLast().remember(new SeenElement(completed.name, completed.line));
         }
     }
 
@@ -93,7 +95,7 @@ final class DocumentPathTracker extends DefaultHandler {
 
     Context context() {
         if (path.isEmpty()) {
-            return new Context("/", null, null, List.of(), line(), column());
+            return new Context("/", null, null, List.of(), List.of(), line(), column());
         }
 
         List<Frame> frames = List.copyOf(path);
@@ -112,6 +114,7 @@ final class DocumentPathTracker extends DefaultHandler {
                 current.name,
                 parent == null ? null : parent.name,
                 parent == null ? List.of() : List.copyOf(parent.children),
+                List.copyOf(current.children),
                 line(),
                 column());
     }
@@ -144,6 +147,13 @@ final class DocumentPathTracker extends DefaultHandler {
             this.index = index;
             this.line = line;
         }
+
+        private void remember(SeenElement child) {
+            if (children.size() == MAX_RETAINED_CHILDREN) {
+                children.remove(0);
+            }
+            children.add(child);
+        }
     }
 
     record SeenElement(QName name, int line) {
@@ -154,6 +164,7 @@ final class DocumentPathTracker extends DefaultHandler {
             QName actualElement,
             QName parentElement,
             List<SeenElement> previousSiblings,
+            List<SeenElement> children,
             int line,
             int column) {
     }
