@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -11,8 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
+import org.xml.sax.InputSource;
 
-record SourceSnapshot(byte[] bytes, String systemId) {
+record SourceSnapshot(byte[] bytes, String characters, String systemId) {
     static SourceSnapshot read(Source source) throws SchemaCompilationException {
         if (!(source instanceof StreamSource streamSource)) {
             throw new SchemaCompilationException(
@@ -25,6 +27,7 @@ record SourceSnapshot(byte[] bytes, String systemId) {
                 try (inputStream) {
                     return new SourceSnapshot(
                             inputStream.readAllBytes(),
+                            null,
                             streamSource.getSystemId());
                 }
             }
@@ -34,8 +37,10 @@ record SourceSnapshot(byte[] bytes, String systemId) {
                 try (reader) {
                     StringWriter text = new StringWriter();
                     reader.transferTo(text);
+                    String characters = text.toString();
                     return new SourceSnapshot(
-                            text.toString().getBytes(StandardCharsets.UTF_8),
+                            characters.getBytes(StandardCharsets.UTF_8),
+                            characters,
                             streamSource.getSystemId());
                 }
             }
@@ -47,7 +52,10 @@ record SourceSnapshot(byte[] bytes, String systemId) {
                             "Only local file schema system IDs are allowed.");
                 }
                 Path path = uri.isAbsolute() ? Path.of(uri) : Path.of(streamSource.getSystemId());
-                return new SourceSnapshot(Files.readAllBytes(path), path.toUri().toString());
+                return new SourceSnapshot(
+                        Files.readAllBytes(path),
+                        null,
+                        path.toUri().toString());
             }
         } catch (IllegalArgumentException | IOException exception) {
             throw new SchemaCompilationException("Could not read the schema source.", exception);
@@ -57,7 +65,17 @@ record SourceSnapshot(byte[] bytes, String systemId) {
     }
 
     StreamSource asSource() {
-        StreamSource source = new StreamSource(new ByteArrayInputStream(bytes));
+        StreamSource source = characters == null
+                ? new StreamSource(new ByteArrayInputStream(bytes))
+                : new StreamSource(new StringReader(characters));
+        source.setSystemId(systemId);
+        return source;
+    }
+
+    InputSource asInputSource() {
+        InputSource source = characters == null
+                ? new InputSource(new ByteArrayInputStream(bytes))
+                : new InputSource(new StringReader(characters));
         source.setSystemId(systemId);
         return source;
     }

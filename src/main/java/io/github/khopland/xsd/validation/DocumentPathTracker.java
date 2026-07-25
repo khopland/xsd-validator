@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.xml.namespace.QName;
+import org.apache.xerces.xs.XSTypeDefinition;
 import org.xml.sax.Attributes;
 import org.xml.sax.ContentHandler;
 import org.xml.sax.Locator;
@@ -105,7 +106,16 @@ final class DocumentPathTracker extends DefaultHandler {
     Context context() {
         if (path.isEmpty()) {
             return new Context(
-                    "/", null, null, List.of(), List.of(), List.of(), line(), column());
+                    "/",
+                    null,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    line(),
+                    column());
         }
 
         List<Frame> frames = List.copyOf(path);
@@ -114,7 +124,7 @@ final class DocumentPathTracker extends DefaultHandler {
         StringBuilder renderedPath = new StringBuilder();
         for (Frame frame : frames) {
             renderedPath.append('/')
-                    .append(frame.name.getLocalPart())
+                    .append(frame.name)
                     .append('[')
                     .append(frame.index)
                     .append(']');
@@ -123,11 +133,19 @@ final class DocumentPathTracker extends DefaultHandler {
                 renderedPath.toString(),
                 current.name,
                 parent == null ? null : parent.name,
+                current.schemaType,
+                parent == null ? null : parent.schemaType,
                 parent == null ? List.of() : List.copyOf(parent.children),
                 List.copyOf(current.children),
                 current.attributes,
                 line(),
                 column());
+    }
+
+    void schemaType(XSTypeDefinition schemaType) {
+        if (!path.isEmpty()) {
+            path.peekLast().schemaType = schemaType;
+        }
     }
 
     private int line() {
@@ -167,6 +185,7 @@ final class DocumentPathTracker extends DefaultHandler {
         private final int index;
         private final int line;
         private final List<QName> attributes;
+        private XSTypeDefinition schemaType;
         private final Map<QName, Integer> childCounts = new HashMap<>();
         private final List<SeenElement> children = new ArrayList<>();
 
@@ -192,6 +211,8 @@ final class DocumentPathTracker extends DefaultHandler {
             String path,
             QName actualElement,
             QName parentElement,
+            XSTypeDefinition actualType,
+            XSTypeDefinition parentType,
             List<SeenElement> previousSiblings,
             List<SeenElement> children,
             List<QName> attributes,

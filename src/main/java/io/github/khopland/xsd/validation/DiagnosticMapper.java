@@ -319,10 +319,15 @@ final class DiagnosticMapper {
                         expected.preview());
             }
             case "cvc-complex-type.2.4.d" -> {
-                boolean duplicate = diagnostic.actualElement() != null
-                        && diagnostic.previousSiblings().stream()
-                                .map(DocumentPathTracker.SeenElement::name)
-                                .anyMatch(diagnostic.actualElement()::equals);
+                long previousOccurrences = diagnostic.previousSiblings().stream()
+                        .map(DocumentPathTracker.SeenElement::name)
+                        .filter(name -> name.equals(diagnostic.actualElement()))
+                        .count();
+                int maximumOccurrences = choices.maximumOccurrences(
+                        diagnostic.parentType(),
+                        diagnostic.actualElement());
+                boolean duplicate = maximumOccurrences > 0
+                        && previousOccurrences >= maximumOccurrences;
                 yield duplicate
                         ? issue(
                                 diagnostic,
@@ -379,6 +384,7 @@ final class DiagnosticMapper {
             return Optional.empty();
         }
         return choices.match(
+                diagnostic.parentType(),
                 diagnostic.parentElement(),
                 diagnostic.actualElement(),
                 diagnostic.previousSiblings());
@@ -392,6 +398,7 @@ final class DiagnosticMapper {
             return Optional.empty();
         }
         return choices.incomplete(
+                diagnostic.actualType(),
                 diagnostic.actualElement(),
                 diagnostic.children()).filter(match -> {
                     ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);

@@ -35,7 +35,7 @@ dependencies are fingerprinted and still cannot contain a DOCTYPE.
 - `complete` is false after a fatal XML or processing error.
 - `rawEventCount` counts Xerces events before related events are grouped.
 - `issues` are immutable, ordered, capped at 100, and contain no raw lexical
-  XML values.
+  XML values. Namespaced path segments use `{namespace}local[index]`.
 - `schema` contains the target namespace and a dependency-aware SHA-256
   fingerprint.
 - `coverage` reports incomplete parsing, truncation, and allowed wildcard
