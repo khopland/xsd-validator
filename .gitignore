@@ -1,0 +1,18 @@
+# Java
+**/target/
+
+# JavaScript
+**/node_modules/
+**/dist/
+*.tsbuildinfo
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local environment
+.env
+.env.*
+!.env.example
