@@ -72,7 +72,7 @@ outside its validation result.
 Every push to `main` publishes the current `-SNAPSHOT` version to GitHub
 Packages after a successful build.
 
-Stable GitHub releases publish to Maven Central. Before the first release:
+Stable SemVer tags publish to Maven Central. Before the first release:
 
 1. Sign in to the [Central Portal](https://central.sonatype.com/) with GitHub
    and verify the `io.github.khopland` namespace.
@@ -81,9 +81,15 @@ Stable GitHub releases publish to Maven Central. Before the first release:
    `MAVEN_GPG_PRIVATE_KEY`, and `MAVEN_GPG_PASSPHRASE`.
 3. Publish the signing key's public key to a public keyserver.
 
-Create a non-prerelease GitHub release with a tag such as `v0.1.0`. The
-workflow uses the tag as the Maven version, signs the artifacts, and publishes
-them through the Central Portal.
+Tag the commit and push the tag:
+
+```shell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow uses the tag as the Maven version, signs the artifacts, and
+publishes them through the Central Portal.
 
 ## Stable issue codes
 
