@@ -1,8 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.ValidationCoverage;
-import io.github.khopland.xsd.validation.ValidationIssue;
-import io.github.khopland.xsd.validation.ValidationReport;
 import java.io.IOException;
 import java.util.List;
 import javax.xml.XMLConstants;

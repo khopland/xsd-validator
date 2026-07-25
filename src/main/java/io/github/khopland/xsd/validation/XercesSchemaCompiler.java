@@ -1,7 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.SchemaCompilationException;
-import io.github.khopland.xsd.validation.SchemaIdentity;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Reader;

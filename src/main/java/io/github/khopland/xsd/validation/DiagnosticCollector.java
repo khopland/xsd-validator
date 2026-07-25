@@ -1,6 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.ValidationSeverity;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.xerces.xni.XNIException;

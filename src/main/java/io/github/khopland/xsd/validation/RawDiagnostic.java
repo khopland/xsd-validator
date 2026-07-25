@@ -1,6 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.ValidationSeverity;
 import java.util.List;
 import javax.xml.namespace.QName;
 

@@ -73,7 +73,7 @@ final class ChoiceIndex {
                     Branch selected = choice.branches().get(selectedBranch);
                     return Optional.of(new Match(
                             sibling,
-                            selected.requiredNames(),
+                            remaining(selected, previousSiblings),
                             choice.branches().get(attemptedBranch).names()));
                 }
             }
@@ -250,7 +250,7 @@ final class ChoiceIndex {
 
     record Match(
             DocumentPathTracker.SeenElement selectedBy,
-            List<QName> selectedBranch,
+            List<QName> remainingElements,
             List<QName> attemptedBranch) {
     }
 

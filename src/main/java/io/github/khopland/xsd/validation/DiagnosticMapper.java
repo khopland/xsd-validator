@@ -1,7 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.SchemaIdentity;
-import io.github.khopland.xsd.validation.ValidationIssue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -88,9 +86,7 @@ final class DiagnosticMapper {
                     + element(match.selectedBy().name())
                     + location(match.selectedBy().line())
                     + " already selected a mutually exclusive choice.";
-            List<QName> remaining = remainingElements(
-                    match.selectedBranch(),
-                    diagnostic.previousSiblings());
+            List<QName> remaining = match.remainingElements();
             if (!remaining.isEmpty()) {
                 message += " Complete that branch with " + renderElements(remaining)
                         + ", or remove it before using "
@@ -684,16 +680,6 @@ final class DiagnosticMapper {
                 : Optional.empty();
     }
 
-    private static List<QName> remainingElements(
-            List<QName> selectedBranch,
-            List<DocumentPathTracker.SeenElement> siblings) {
-        List<QName> remaining = new ArrayList<>(selectedBranch);
-        for (DocumentPathTracker.SeenElement sibling : siblings) {
-            remaining.remove(sibling.name());
-        }
-        return List.copyOf(remaining);
-    }
-
     private static String renderElements(List<QName> elements) {
         return elements.stream().map(DiagnosticMapper::element).reduce((left, right) ->
                 left + " then " + right).orElse("the alternative branch");
@@ -769,7 +755,7 @@ final class DiagnosticMapper {
     }
 
     private static final class IssueBuilder {
-        private final io.github.khopland.xsd.validation.ValidationSeverity severity;
+        private final ValidationSeverity severity;
         private final String code;
         private final String message;
         private final String path;
