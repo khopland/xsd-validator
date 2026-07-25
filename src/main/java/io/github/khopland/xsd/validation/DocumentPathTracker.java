@@ -1,12 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import javax.xml.namespace.QName;
 import org.apache.xerces.xs.XSTypeDefinition;
 import org.jspecify.annotations.Nullable;
 import org.xml.sax.Attributes;
@@ -14,6 +7,9 @@ import org.xml.sax.ContentHandler;
 import org.xml.sax.Locator;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
+
+import javax.xml.namespace.QName;
+import java.util.*;
 
 final class DocumentPathTracker extends DefaultHandler {
     private static final int MAX_DEPTH = 256;
@@ -168,8 +164,8 @@ final class DocumentPathTracker extends DefaultHandler {
     private static List<QName> attributeNames(Attributes attributes) {
         List<QName> names = new ArrayList<>();
         for (int index = 0;
-                index < attributes.getLength() && names.size() < MAX_RETAINED_ATTRIBUTES;
-                index++) {
+             index < attributes.getLength() && names.size() < MAX_RETAINED_ATTRIBUTES;
+             index++) {
             String qName = attributes.getQName(index);
             int separator = qName.indexOf(':');
             String prefix = separator < 0 ? "" : qName.substring(0, separator);

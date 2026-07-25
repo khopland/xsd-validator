@@ -1,13 +1,14 @@
 package io.github.khopland.xsd.validation;
 
+import org.jspecify.annotations.Nullable;
+
+import javax.xml.XMLConstants;
+import javax.xml.namespace.QName;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import javax.xml.XMLConstants;
-import javax.xml.namespace.QName;
-import org.jspecify.annotations.Nullable;
 
 final class DiagnosticMapper {
     private static final int MAX_EXPECTED_ELEMENTS = 5;
@@ -111,8 +112,8 @@ final class DiagnosticMapper {
             ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
             List<QName> expectedPreview = expected.preview().isEmpty()
                     ? match.remainingElements().stream()
-                            .limit(MAX_EXPECTED_ELEMENTS)
-                            .toList()
+                    .limit(MAX_EXPECTED_ELEMENTS)
+                    .toList()
                     : expected.preview();
             String message = element(match.selectedBy().name())
                     + location(match.selectedBy().line())
@@ -243,16 +244,16 @@ final class DiagnosticMapper {
                     List.of(),
                     XSI_NIL);
             case "cvc-enumeration-valid",
-                    "cvc-pattern-valid",
-                    "cvc-length-valid",
-                    "cvc-minLength-valid",
-                    "cvc-maxLength-valid",
-                    "cvc-minInclusive-valid",
-                    "cvc-minExclusive-valid",
-                    "cvc-maxInclusive-valid",
-                    "cvc-maxExclusive-valid",
-                    "cvc-totalDigits-valid",
-                    "cvc-fractionDigits-valid" -> facetIssue(diagnostic, actualAttribute);
+                 "cvc-pattern-valid",
+                 "cvc-length-valid",
+                 "cvc-minLength-valid",
+                 "cvc-maxLength-valid",
+                 "cvc-minInclusive-valid",
+                 "cvc-minExclusive-valid",
+                 "cvc-maxInclusive-valid",
+                 "cvc-maxExclusive-valid",
+                 "cvc-totalDigits-valid",
+                 "cvc-fractionDigits-valid" -> facetIssue(diagnostic, actualAttribute);
             case "cvc-complex-type.2.4.e", "cvc-complex-type.2.4.f" -> {
                 int maximum = integerArgument(
                         diagnostic.arguments(),
@@ -264,8 +265,8 @@ final class DiagnosticMapper {
                         + " exceeds its maximum occurrence"
                         + (maximum > 0 ? " of " + maximum : "")
                         + (expected.preview().isEmpty()
-                                ? "."
-                                : "; expected " + expected.description() + " instead.");
+                        ? "."
+                        : "; expected " + expected.description() + " instead.");
                 yield issue(
                         diagnostic,
                         "MAX_OCCURS_EXCEEDED",
@@ -331,15 +332,15 @@ final class DiagnosticMapper {
                         && previousOccurrences >= maximumOccurrences;
                 yield duplicate
                         ? issue(
-                                diagnostic,
-                                "DUPLICATE_ELEMENT",
-                                "Element " + element(diagnostic.actualElement())
-                                        + " already occurred and cannot occur again here.")
+                        diagnostic,
+                        "DUPLICATE_ELEMENT",
+                        "Element " + element(diagnostic.actualElement())
+                        + " already occurred and cannot occur again here.")
                         : issue(
-                                diagnostic,
-                                "UNEXPECTED_ELEMENT",
-                                "Element " + element(diagnostic.actualElement())
-                                        + " is not permitted at this position.");
+                        diagnostic,
+                        "UNEXPECTED_ELEMENT",
+                        "Element " + element(diagnostic.actualElement())
+                        + " is not permitted at this position.");
             }
             default -> {
                 if (key.startsWith("cvc-datatype-valid")) {
@@ -379,7 +380,7 @@ final class DiagnosticMapper {
             RawDiagnostic diagnostic,
             ChoiceIndex choices) {
         if (!(diagnostic.key().equals("cvc-complex-type.2.4.a")
-                        || diagnostic.key().equals("cvc-complex-type.2.4.d"))
+                || diagnostic.key().equals("cvc-complex-type.2.4.d"))
                 || diagnostic.parentElement() == null
                 || diagnostic.actualElement() == null) {
             return Optional.empty();
@@ -402,11 +403,11 @@ final class DiagnosticMapper {
                 diagnostic.actualType(),
                 diagnostic.actualElement(),
                 diagnostic.children()).filter(match -> {
-                    ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
-                    return expected.preview().isEmpty()
-                            || expected.preview().stream()
-                                    .anyMatch(match.remainingElements()::contains);
-                });
+            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+            return expected.preview().isEmpty()
+                    || expected.preview().stream()
+                    .anyMatch(match.remainingElements()::contains);
+        });
     }
 
     private static IssueBuilder facetIssue(
@@ -505,7 +506,7 @@ final class DiagnosticMapper {
             RawDiagnostic companion) {
         return isValueDiagnostic(specific.key())
                 && ("cvc-type.3.1.3".equals(companion.key())
-                        || "cvc-attribute.3".equals(companion.key()))
+                || "cvc-attribute.3".equals(companion.key()))
                 && specific.path().equals(companion.path())
                 && specific.line() == companion.line();
     }
@@ -518,8 +519,8 @@ final class DiagnosticMapper {
                 && specific.path().equals(companion.path())
                 && specific.line() == companion.line()
                 && Objects.equals(
-                        attributeName(specific),
-                        attributeName(companion));
+                attributeName(specific),
+                attributeName(companion));
     }
 
     private static boolean isValueDiagnostic(String key) {
@@ -529,16 +530,16 @@ final class DiagnosticMapper {
     private static boolean isFacetDiagnostic(String key) {
         return switch (key) {
             case "cvc-enumeration-valid",
-                    "cvc-pattern-valid",
-                    "cvc-length-valid",
-                    "cvc-minLength-valid",
-                    "cvc-maxLength-valid",
-                    "cvc-minInclusive-valid",
-                    "cvc-minExclusive-valid",
-                    "cvc-maxInclusive-valid",
-                    "cvc-maxExclusive-valid",
-                    "cvc-totalDigits-valid",
-                    "cvc-fractionDigits-valid" -> true;
+                 "cvc-pattern-valid",
+                 "cvc-length-valid",
+                 "cvc-minLength-valid",
+                 "cvc-maxLength-valid",
+                 "cvc-minInclusive-valid",
+                 "cvc-minExclusive-valid",
+                 "cvc-maxInclusive-valid",
+                 "cvc-maxExclusive-valid",
+                 "cvc-totalDigits-valid",
+                 "cvc-fractionDigits-valid" -> true;
             default -> false;
         };
     }
@@ -551,7 +552,7 @@ final class DiagnosticMapper {
     }
 
     private static @Nullable QName attributeName(RawDiagnostic diagnostic) {
-        @Nullable Object lexicalArgument = diagnostic.arguments().length < 2
+        Object lexicalArgument = diagnostic.arguments().length < 2
                 ? null
                 : diagnostic.arguments()[1];
         if (!isAttributeDiagnostic(diagnostic.key())
@@ -572,7 +573,7 @@ final class DiagnosticMapper {
         if (present.isPresent()) {
             return present.get();
         }
-        @Nullable Object namespaceArgument = diagnostic.arguments().length > 2
+        Object namespaceArgument = diagnostic.arguments().length > 2
                 ? diagnostic.arguments()[2]
                 : null;
         if ("cvc-complex-type.4_ns".equals(diagnostic.key())
@@ -586,7 +587,7 @@ final class DiagnosticMapper {
         if (arguments.length <= index || arguments[index] == null) {
             return Optional.empty();
         }
-        String candidate = arguments[index].toString();
+        String candidate = Objects.requireNonNull(arguments[index]).toString();
         return SAFE_TYPE_NAME.matcher(candidate).matches()
                 ? Optional.of(candidate)
                 : Optional.empty();
@@ -596,7 +597,7 @@ final class DiagnosticMapper {
         if (arguments.length <= index || arguments[index] == null) {
             return "the schema limit";
         }
-        String value = arguments[index].toString();
+        String value = Objects.requireNonNull(arguments[index]).toString();
         if (value.chars().anyMatch(Character::isISOControl)) {
             return "the schema limit";
         }
@@ -607,7 +608,7 @@ final class DiagnosticMapper {
         if (arguments.length <= index || arguments[index] == null) {
             return AllowedValues.EMPTY;
         }
-        String value = arguments[index].toString();
+        String value = Objects.requireNonNull(arguments[index]).toString();
         if (value.startsWith("[") && value.endsWith("]")) {
             value = value.substring(1, value.length() - 1);
         }
@@ -638,7 +639,7 @@ final class DiagnosticMapper {
             return -1;
         }
         try {
-            return Integer.parseInt(arguments[index].toString());
+            return Integer.parseInt(Objects.requireNonNull(arguments[index]).toString());
         } catch (NumberFormatException ignored) {
             return -1;
         }
@@ -652,7 +653,7 @@ final class DiagnosticMapper {
         if (arguments.length <= index || arguments[index] == null) {
             return ExpectedElements.EMPTY;
         }
-        String value = arguments[index].toString().trim();
+        String value = Objects.requireNonNull(arguments[index]).toString().trim();
         if (value.startsWith("{") && value.endsWith("}")) {
             value = value.substring(1, value.length() - 1);
         }
@@ -767,7 +768,7 @@ final class DiagnosticMapper {
             String code,
             int constraintArgument,
             String messagePrefix) {
-        @Nullable String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
+        String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
                 .orElse(null);
         String message = constraintName == null
                 ? messagePrefix + "."

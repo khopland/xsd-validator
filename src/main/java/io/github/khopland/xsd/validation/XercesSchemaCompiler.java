@@ -1,5 +1,19 @@
 package io.github.khopland.xsd.validation;
 
+import org.apache.xerces.dom.DOMInputImpl;
+import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
+import org.jspecify.annotations.Nullable;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.ls.LSException;
+import org.w3c.dom.ls.LSInput;
+import org.w3c.dom.ls.LSResourceResolver;
+import org.xml.sax.SAXException;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Source;
+import javax.xml.validation.Schema;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Reader;
@@ -14,19 +28,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.TreeMap;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.Source;
-import javax.xml.validation.Schema;
-import org.apache.xerces.dom.DOMInputImpl;
-import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
-import org.jspecify.annotations.Nullable;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.ls.LSException;
-import org.w3c.dom.ls.LSInput;
-import org.w3c.dom.ls.LSResourceResolver;
-import org.xml.sax.SAXException;
 
 final class XercesSchemaCompiler {
     private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema";
@@ -151,7 +152,7 @@ final class XercesSchemaCompiler {
 
         @Override
         public LSInput resolveResource(
-                @Nullable String type,
+                String type,
                 @Nullable String namespaceUri,
                 @Nullable String publicId,
                 @Nullable String systemId,
@@ -172,6 +173,11 @@ final class XercesSchemaCompiler {
                     if (input != null) {
                         return capture(input, publicId, systemId, baseUri);
                     }
+                }
+                if (systemId == null) {
+                    throw new LSException(
+                            LSException.PARSE_ERR,
+                            "The schema dependency has no system ID.");
                 }
                 URI resolved = baseUri == null
                         ? URI.create(systemId)
@@ -207,7 +213,7 @@ final class XercesSchemaCompiler {
                 @Nullable String baseUri)
                 throws IOException {
             byte[] bytes;
-            @Nullable String encoding = input.getEncoding();
+            String encoding = input.getEncoding();
             var byteStream = input.getByteStream();
             if (byteStream != null) {
                 try (byteStream) {
@@ -253,7 +259,7 @@ final class XercesSchemaCompiler {
                 @Nullable String suppliedSystemId,
                 @Nullable String requestedSystemId,
                 @Nullable String baseUri) {
-            @Nullable String systemId = suppliedSystemId == null
+            String systemId = suppliedSystemId == null
                     ? requestedSystemId
                     : suppliedSystemId;
             if (systemId == null) {

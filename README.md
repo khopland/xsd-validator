@@ -36,8 +36,9 @@ dependencies are fingerprinted and still cannot contain a DOCTYPE.
 - `rawEventCount` counts Xerces events before related events are grouped.
 - `issues` are immutable, ordered, capped at 100, and contain no raw lexical
   XML values. Namespaced path segments use `{namespace}local[index]`.
-  `actualElement`, `actualAttribute`, and `constraintName` are nullable;
-  the rest of the API is non-null by default through JSpecify.
+  `actualElement`, `actualAttribute`, and `constraintName` are nullable.
+  `SchemaIdentity` accepts a nullable target namespace and normalizes it to an
+  empty string; the rest of the API is non-null by default through JSpecify.
 - `schema` contains the target namespace and a dependency-aware SHA-256
   fingerprint.
 - `coverage` reports incomplete parsing, truncation, and allowed wildcard

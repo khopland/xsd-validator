@@ -17,7 +17,7 @@ public final class SchemaCompilationException extends Exception {
      * Creates an exception with its underlying cause.
      *
      * @param message safe explanation
-     * @param cause underlying compilation failure
+     * @param cause   underlying compilation failure
      */
     public SchemaCompilationException(String message, Throwable cause) {
         super(message, cause);

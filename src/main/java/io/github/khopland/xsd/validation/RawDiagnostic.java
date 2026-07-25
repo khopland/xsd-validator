@@ -1,9 +1,10 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.List;
-import javax.xml.namespace.QName;
 import org.apache.xerces.xs.XSTypeDefinition;
 import org.jspecify.annotations.Nullable;
+
+import javax.xml.namespace.QName;
+import java.util.List;
 
 record RawDiagnostic(
         String domain,

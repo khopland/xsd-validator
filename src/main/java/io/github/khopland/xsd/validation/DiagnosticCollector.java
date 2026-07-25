@@ -1,11 +1,12 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.xerces.xni.XNIException;
 import org.apache.xerces.xni.parser.XMLErrorHandler;
 import org.apache.xerces.xni.parser.XMLParseException;
 import org.jspecify.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 final class DiagnosticCollector implements XMLErrorHandler {
     private static final int MAX_RETAINED_DIAGNOSTICS = 1_000;

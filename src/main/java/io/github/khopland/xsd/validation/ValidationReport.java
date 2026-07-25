@@ -6,11 +6,11 @@ import java.util.Objects;
 /**
  * Result of validating one XML document.
  *
- * @param valid whether parsing completed and Xerces reported no errors
+ * @param valid         whether parsing completed and Xerces reported no errors
  * @param rawEventCount number of recoverable engine events before grouping
- * @param issues grouped issues in document order
- * @param schema identity of the compiled schema and its dependencies
- * @param coverage limits on what validation assessed and retained
+ * @param issues        grouped issues in document order
+ * @param schema        identity of the compiled schema and its dependencies
+ * @param coverage      limits on what validation assessed and retained
  */
 public record ValidationReport(
         boolean valid,

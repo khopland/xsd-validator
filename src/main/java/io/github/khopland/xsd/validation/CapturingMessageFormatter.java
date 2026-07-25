@@ -1,9 +1,10 @@
 package io.github.khopland.xsd.validation;
 
-import java.util.Locale;
-import java.util.MissingResourceException;
 import org.apache.xerces.util.MessageFormatter;
 import org.jspecify.annotations.Nullable;
+
+import java.util.Locale;
+import java.util.MissingResourceException;
 
 final class CapturingMessageFormatter implements MessageFormatter {
     private final MessageFormatter delegate;

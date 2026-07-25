@@ -1,26 +1,27 @@
 package io.github.khopland.xsd.validation;
 
+import org.jspecify.annotations.Nullable;
+
+import javax.xml.namespace.QName;
 import java.util.List;
 import java.util.Objects;
-import javax.xml.namespace.QName;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A safe, structured validation diagnostic. Raw XML values are never retained.
  * The {@code code} is the stable, machine-readable contract; {@code message}
  * is intended for people and must not be parsed.
  *
- * @param severity issue severity
- * @param code stable library code documented in the project README
- * @param message safe human-readable explanation
- * @param path namespace-aware indexed path using {@code {namespace}local[index]} segments
- * @param line one-based line, or a negative value when unavailable
- * @param column one-based column, or a negative value when unavailable
- * @param actualElement element at the validation location, when available
- * @param actualAttribute relevant attribute, when available
- * @param constraintName identity-constraint name, when relevant
+ * @param severity         issue severity
+ * @param code             stable library code documented in the project README
+ * @param message          safe human-readable explanation
+ * @param path             namespace-aware indexed path using {@code {namespace}local[index]} segments
+ * @param line             one-based line, or a negative value when unavailable
+ * @param column           one-based column, or a negative value when unavailable
+ * @param actualElement    element at the validation location, when available
+ * @param actualAttribute  relevant attribute, when available
+ * @param constraintName   identity-constraint name, when relevant
  * @param expectedElements bounded valid-next element preview
- * @param schemaCodes grouped Xerces schema keys
+ * @param schemaCodes      grouped Xerces schema keys
  */
 public record ValidationIssue(
         ValidationSeverity severity,
