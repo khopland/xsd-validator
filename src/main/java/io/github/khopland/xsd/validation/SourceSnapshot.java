@@ -16,7 +16,7 @@ record SourceSnapshot(byte[] bytes, String systemId) {
     static SourceSnapshot read(Source source) throws SchemaCompilationException {
         if (!(source instanceof StreamSource streamSource)) {
             throw new SchemaCompilationException(
-                    "Milestone 0 supports StreamSource schemas; convert this Source to a StreamSource.");
+                    "Only StreamSource schema input is supported.");
         }
 
         try {

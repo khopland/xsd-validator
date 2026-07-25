@@ -1,5 +1,6 @@
 package io.github.khopland.xsd.validation;
 
+import java.util.Objects;
 import javax.xml.transform.Source;
 import org.w3c.dom.ls.LSResourceResolver;
 
@@ -39,7 +40,7 @@ public final class BetterXsdValidator {
             throws SchemaCompilationException {
         return new BetterXsdValidator(XercesSchemaCompiler.compile(
                 schemaSource,
-                java.util.Objects.requireNonNull(resolver, "resolver")));
+                Objects.requireNonNull(resolver, "resolver")));
     }
 
     /**

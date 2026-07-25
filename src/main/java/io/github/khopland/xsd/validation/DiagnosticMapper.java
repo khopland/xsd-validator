@@ -2,6 +2,7 @@ package io.github.khopland.xsd.validation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
@@ -508,7 +509,7 @@ final class DiagnosticMapper {
                 && "cvc-complex-type.3.1".equals(companion.key())
                 && specific.path().equals(companion.path())
                 && specific.line() == companion.line()
-                && java.util.Objects.equals(
+                && Objects.equals(
                         attributeName(specific),
                         attributeName(companion));
     }
@@ -778,7 +779,7 @@ final class DiagnosticMapper {
         private final List<String> schemaCodes;
 
         private IssueBuilder(
-                io.github.khopland.xsd.validation.ValidationSeverity severity,
+                ValidationSeverity severity,
                 String code,
                 String message,
                 String path,
