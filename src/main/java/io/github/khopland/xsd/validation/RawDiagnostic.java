@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import io.github.khopland.xsd.validation.ValidationSeverity;
 import java.util.List;

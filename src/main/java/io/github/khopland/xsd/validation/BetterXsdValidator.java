@@ -1,7 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import io.github.khopland.xsd.validation.internal.XercesSchemaCompiler;
-import io.github.khopland.xsd.validation.internal.XercesValidationSession;
 import javax.xml.transform.Source;
 
 /**

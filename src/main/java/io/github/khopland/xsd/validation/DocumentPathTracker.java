@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

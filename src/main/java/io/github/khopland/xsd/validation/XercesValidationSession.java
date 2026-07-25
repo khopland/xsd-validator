@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import io.github.khopland.xsd.validation.ValidationCoverage;
 import io.github.khopland.xsd.validation.ValidationIssue;
@@ -20,7 +20,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
 
-public final class XercesValidationSession {
+final class XercesValidationSession {
     private static final String ERROR_HANDLER =
             "http://apache.org/xml/properties/internal/error-handler";
     private static final String ERROR_REPORTER =
@@ -30,15 +30,15 @@ public final class XercesValidationSession {
     private XercesValidationSession() {
     }
 
-    public static ValidationReport validate(
+    static ValidationReport validate(
             XercesSchemaCompiler.CompiledSchema compiledSchema,
             Source source) {
         ValidatorHandler validator = compiledSchema.schema().newValidatorHandler();
         DocumentPathTracker pathTracker = new DocumentPathTracker(validator);
-        ValidationCoverageTracker coverageTracker =
-                new ValidationCoverageTracker((PSVIProvider) validator, pathTracker);
-        validator.setContentHandler(coverageTracker);
         DiagnosticCollector collector = new DiagnosticCollector(pathTracker);
+        ValidationCoverageTracker coverageTracker =
+                new ValidationCoverageTracker((PSVIProvider) validator, pathTracker, collector);
+        validator.setContentHandler(coverageTracker);
         boolean complete = true;
 
         try {
@@ -73,7 +73,7 @@ public final class XercesValidationSession {
                 new ValidationCoverage(
                         complete,
                         truncated,
-                        coverageTracker.skippedOrLaxContent(collector.diagnostics())));
+                        coverageTracker.skippedOrLaxContent()));
     }
 
     private static void configureStructuredErrors(

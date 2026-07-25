@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import java.io.StringReader;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.xml.namespace.QName;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -103,6 +106,102 @@ class BetterXsdValidatorTest {
         assertThat(issue.expectedElements())
                 .containsExactly(new QName("urn:contact", "postalCode"));
         assertThat(issue.schemaCodes()).containsExactly("cvc-complex-type.2.4.b");
+    }
+
+    @Test
+    void explainsNamedTypeChoicesWithoutPrescribingOptionalTailElements() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:complexType name="ContactType">
+                    <xs:choice>
+                      <xs:sequence>
+                        <xs:element name="postalAddress"/>
+                        <xs:element name="postalCode" minOccurs="0"/>
+                      </xs:sequence>
+                      <xs:element name="sms"/>
+                    </xs:choice>
+                  </xs:complexType>
+                  <xs:element name="contact" type="ContactType"/>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue = validator.validate(xml("""
+                <contact><postalAddress/><sms/></contact>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("CHOICE_ALREADY_SELECTED");
+        assertThat(issue.message())
+                .contains("<postalAddress>", "mutually exclusive")
+                .doesNotContain("Complete that branch", "<postalCode>");
+    }
+
+    @Test
+    void explainsChoicesInheritedFromABaseType() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:complexType name="BaseType">
+                    <xs:choice>
+                      <xs:element name="email"/>
+                      <xs:element name="sms"/>
+                    </xs:choice>
+                  </xs:complexType>
+                  <xs:complexType name="ExtendedType">
+                    <xs:complexContent>
+                      <xs:extension base="BaseType">
+                        <xs:sequence>
+                          <xs:element name="after" minOccurs="0"/>
+                        </xs:sequence>
+                      </xs:extension>
+                    </xs:complexContent>
+                  </xs:complexType>
+                  <xs:element name="contact" type="ExtendedType"/>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue =
+                validator.validate(xml("<contact><email/><sms/></contact>")).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("CHOICE_ALREADY_SELECTED");
+        assertThat(issue.message()).contains("<email>", "mutually exclusive");
+    }
+
+    @Test
+    void explainsChoicesFromImportedTypes(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("types.xsd"), """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:types"
+                           elementFormDefault="qualified">
+                  <xs:complexType name="ContactType">
+                    <xs:choice>
+                      <xs:element name="email"/>
+                      <xs:element name="sms"/>
+                    </xs:choice>
+                  </xs:complexType>
+                </xs:schema>
+                """);
+        Path root = directory.resolve("root.xsd");
+        Files.writeString(root, """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           xmlns:t="urn:types"
+                           targetNamespace="urn:root"
+                           xmlns="urn:root"
+                           elementFormDefault="qualified">
+                  <xs:import namespace="urn:types" schemaLocation="types.xsd"/>
+                  <xs:element name="contact" type="t:ContactType"/>
+                </xs:schema>
+                """);
+        BetterXsdValidator validator =
+                BetterXsdValidator.compile(new StreamSource(root.toFile()));
+
+        ValidationIssue issue = validator.validate(xml("""
+                <contact xmlns="urn:root" xmlns:t="urn:types">
+                  <t:email/><t:sms/>
+                </contact>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("CHOICE_ALREADY_SELECTED");
+        assertThat(issue.actualElement()).isEqualTo(new QName("urn:types", "sms"));
+        assertThat(issue.message()).contains("<email>", "mutually exclusive");
     }
 
     @Test
@@ -340,6 +439,18 @@ class BetterXsdValidatorTest {
 
         assertThat(issue.code()).isEqualTo("UNDECLARED_ROOT");
         assertThat(issue.message()).doesNotContain("uses namespace");
+    }
+
+    @Test
+    void doesNotCallAnUnrelatedRootANamespaceMismatch() throws Exception {
+        BetterXsdValidator validator = compile(CHOICE_SCHEMA);
+
+        ValidationIssue issue = validator.validate(xml("""
+                <unrelated xmlns="urn:actual"/>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("UNDECLARED_ROOT");
+        assertThat(issue.message()).doesNotContain("schema expects", "namespace mismatch");
     }
 
     @Test
@@ -850,6 +961,16 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void keepsXercesImplementationTypesOutOfThePublicApi() {
+        assertThat(java.util.List.of(
+                        XercesSchemaCompiler.class,
+                        XercesSchemaCompiler.CompiledSchema.class,
+                        XercesValidationSession.class))
+                .allSatisfy(type ->
+                        assertThat(Modifier.isPublic(type.getModifiers())).isFalse());
+    }
+
+    @Test
     void doesNotMistakeStrictlyValidatedContentForWildcardCoverage() throws Exception {
         BetterXsdValidator validator = compile("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -1096,6 +1217,53 @@ class BetterXsdValidatorTest {
                         </xs:schema>
                         """))
                 .withMessage("The XSD 1.0 schema could not be compiled.");
+    }
+
+    @Test
+    void rejectsDoctypesInIncludedSchemas(@TempDir Path directory) throws Exception {
+        Path secret = directory.resolve("secret.txt");
+        Files.writeString(secret, "private-schema-value");
+        Files.writeString(directory.resolve("dependency.xsd"), """
+                <!DOCTYPE xs:schema [
+                  <!ENTITY private SYSTEM "%s">
+                ]>
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:annotation>
+                    <xs:documentation>&private;</xs:documentation>
+                  </xs:annotation>
+                </xs:schema>
+                """.formatted(secret.toUri()));
+        Path root = directory.resolve("root.xsd");
+        Files.writeString(root, """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:include schemaLocation="dependency.xsd"/>
+                  <xs:element name="value" type="xs:string"/>
+                </xs:schema>
+                """);
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(new StreamSource(root.toFile())))
+                .withMessage("The XSD 1.0 schema could not be compiled.");
+    }
+
+    @Test
+    void distinguishesUnsupportedSourcesFromMalformedXml() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value" type="xs:string"/>
+                </xs:schema>
+                """);
+        var document = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(new org.xml.sax.InputSource(new StringReader("<value>ok</value>")));
+
+        ValidationReport report = validator.validate(new DOMSource(document));
+
+        assertThat(report.complete()).isFalse();
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("XML_PROCESSING_ERROR");
+            assertThat(issue.schemaCodes()).containsExactly("xml-processing-stopped");
+        });
     }
 
     private static BetterXsdValidator compile(String schema)

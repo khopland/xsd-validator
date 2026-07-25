@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import io.github.khopland.xsd.validation.SchemaCompilationException;
 import java.io.ByteArrayInputStream;

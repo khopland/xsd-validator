@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import io.github.khopland.xsd.validation.SchemaIdentity;
 import io.github.khopland.xsd.validation.ValidationIssue;
@@ -70,6 +70,8 @@ final class DiagnosticMapper {
             ChoiceIndex choices,
             QName actualAttribute) {
         if ("cvc-elt.1.a".equals(diagnostic.key())
+                && diagnostic.actualElement() != null
+                && choices.hasRootLocalName(diagnostic.actualElement().getLocalPart())
                 && !namespace(diagnostic.actualElement()).equals(schema.targetNamespace())) {
             String actualNamespace = namespace(diagnostic.actualElement());
             String message = "Root element " + element(diagnostic.actualElement())
@@ -84,6 +86,13 @@ final class DiagnosticMapper {
                     "UNDECLARED_ROOT",
                     "Root element " + element(diagnostic.actualElement())
                             + " is not declared by the compiled schema.");
+        }
+
+        if ("xml-processing-stopped".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "XML_PROCESSING_ERROR",
+                    "XML validation could not process the supplied Source.");
         }
 
         if ("cvc-complex-type.4".equals(diagnostic.key())
@@ -246,7 +255,7 @@ final class DiagnosticMapper {
                     + element(match.selectedBy().name())
                     + location(match.selectedBy().line())
                     + " already selected a mutually exclusive choice.";
-            List<String> remaining = remainingElements(
+            List<QName> remaining = remainingElements(
                     match.selectedBranch(),
                     diagnostic.previousSiblings());
             if (!remaining.isEmpty()) {
@@ -264,9 +273,6 @@ final class DiagnosticMapper {
             ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
             List<QName> expectedPreview = expected.preview().isEmpty()
                     ? match.remainingElements().stream()
-                            .map(name -> new QName(
-                                    namespace(diagnostic.actualElement()),
-                                    name))
                             .limit(MAX_EXPECTED_ELEMENTS)
                             .toList()
                     : expected.preview();
@@ -407,8 +413,8 @@ final class DiagnosticMapper {
             return Optional.empty();
         }
         return choices.match(
-                diagnostic.parentElement().getLocalPart(),
-                diagnostic.actualElement().getLocalPart(),
+                diagnostic.parentElement(),
+                diagnostic.actualElement(),
                 diagnostic.previousSiblings());
     }
 
@@ -420,12 +426,11 @@ final class DiagnosticMapper {
             return Optional.empty();
         }
         return choices.incomplete(
-                diagnostic.actualElement().getLocalPart(),
+                diagnostic.actualElement(),
                 diagnostic.children()).filter(match -> {
                     ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
                     return expected.preview().isEmpty()
                             || expected.preview().stream()
-                                    .map(QName::getLocalPart)
                                     .anyMatch(match.remainingElements()::contains);
                 });
     }
@@ -717,18 +722,18 @@ final class DiagnosticMapper {
                 : Optional.empty();
     }
 
-    private static List<String> remainingElements(
-            List<String> selectedBranch,
+    private static List<QName> remainingElements(
+            List<QName> selectedBranch,
             List<DocumentPathTracker.SeenElement> siblings) {
-        List<String> remaining = new ArrayList<>(selectedBranch);
+        List<QName> remaining = new ArrayList<>(selectedBranch);
         for (DocumentPathTracker.SeenElement sibling : siblings) {
-            remaining.remove(sibling.name().getLocalPart());
+            remaining.remove(sibling.name());
         }
         return List.copyOf(remaining);
     }
 
-    private static String renderElements(List<String> elements) {
-        return elements.stream().map(name -> "<" + name + ">").reduce((left, right) ->
+    private static String renderElements(List<QName> elements) {
+        return elements.stream().map(DiagnosticMapper::element).reduce((left, right) ->
                 left + " then " + right).orElse("the alternative branch");
     }
 

@@ -1,4 +1,4 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
 import io.github.khopland.xsd.validation.SchemaCompilationException;
 import io.github.khopland.xsd.validation.SchemaIdentity;
@@ -28,13 +28,13 @@ import org.w3c.dom.ls.LSResourceResolver;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
-public final class XercesSchemaCompiler {
+final class XercesSchemaCompiler {
     private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema";
 
     private XercesSchemaCompiler() {
     }
 
-    public static CompiledSchema compile(Source source) throws SchemaCompilationException {
+    static CompiledSchema compile(Source source) throws SchemaCompilationException {
         SourceSnapshot snapshot = SourceSnapshot.read(source);
         Document document = parseForMetadata(snapshot);
 
@@ -47,6 +47,9 @@ public final class XercesSchemaCompiler {
             LocalSchemaResolver resolver = new LocalSchemaResolver();
             XMLSchemaFactory factory = new XMLSchemaFactory();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature(
+                    "http://apache.org/xml/features/disallow-doctype-decl",
+                    true);
             factory.setResourceResolver(resolver);
 
             Schema schema = factory.newSchema(snapshot.asSource());
@@ -54,7 +57,10 @@ public final class XercesSchemaCompiler {
             SchemaIdentity identity = new SchemaIdentity(
                     targetNamespace,
                     sha256(snapshot.bytes(), resolver.dependencies()));
-            return new CompiledSchema(schema, identity, ChoiceIndex.from(document));
+            return new CompiledSchema(
+                    schema,
+                    identity,
+                    ChoiceIndex.from(schema, targetNamespace));
         } catch (SAXException | RuntimeException exception) {
             throw new SchemaCompilationException("The XSD 1.0 schema could not be compiled.", exception);
         }
@@ -137,6 +143,11 @@ public final class XercesSchemaCompiler {
                 String systemId,
                 String baseUri) {
             try {
+                if (!XSD_NAMESPACE.equals(type)) {
+                    throw new LSException(
+                            LSException.PARSE_ERR,
+                            "Only XSD dependencies are allowed.");
+                }
                 URI resolved = baseUri == null
                         ? URI.create(systemId)
                         : URI.create(baseUri).resolve(systemId);
@@ -165,7 +176,7 @@ public final class XercesSchemaCompiler {
         }
     }
 
-    public record CompiledSchema(
+    record CompiledSchema(
             Schema schema,
             SchemaIdentity identity,
             ChoiceIndex choiceIndex) {

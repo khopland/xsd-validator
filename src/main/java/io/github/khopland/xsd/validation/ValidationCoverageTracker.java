@@ -1,8 +1,5 @@
-package io.github.khopland.xsd.validation.internal;
+package io.github.khopland.xsd.validation;
 
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 import org.apache.xerces.xs.ElementPSVI;
 import org.apache.xerces.xs.ItemPSVI;
 import org.apache.xerces.xs.PSVIProvider;
@@ -13,14 +10,17 @@ import org.xml.sax.helpers.DefaultHandler;
 final class ValidationCoverageTracker extends DefaultHandler {
     private final PSVIProvider psviProvider;
     private final DocumentPathTracker pathTracker;
-    private final Set<String> unassessedPaths = new LinkedHashSet<>();
+    private final DiagnosticCollector collector;
     private int depth;
+    private boolean skippedOrLaxContent;
 
     ValidationCoverageTracker(
             PSVIProvider psviProvider,
-            DocumentPathTracker pathTracker) {
+            DocumentPathTracker pathTracker,
+            DiagnosticCollector collector) {
         this.psviProvider = psviProvider;
         this.pathTracker = pathTracker;
+        this.collector = collector;
     }
 
     @Override
@@ -35,21 +35,22 @@ final class ValidationCoverageTracker extends DefaultHandler {
     @Override
     public void endElement(String uri, String localName, String qName) {
         ElementPSVI psvi = psviProvider.getElementPSVI();
-        if (depth > 1
+        if (!skippedOrLaxContent
+                && depth > 1
                 && psvi != null
                 && psvi.getValidationAttempted() != ItemPSVI.VALIDATION_FULL
-                && hasNoErrors(psvi.getErrorCodes())) {
-            unassessedPaths.add(pathTracker.context().path());
+                && hasNoErrors(psvi.getErrorCodes())
+                && collector.diagnostics().stream().noneMatch(diagnostic ->
+                        diagnostic.path().equals(pathTracker.context().path())
+                                && diagnostic.severity()
+                                        != ValidationSeverity.WARNING)) {
+            skippedOrLaxContent = true;
         }
         depth--;
     }
 
-    boolean skippedOrLaxContent(List<RawDiagnostic> diagnostics) {
-        return unassessedPaths.stream().anyMatch(path ->
-                diagnostics.stream().noneMatch(diagnostic ->
-                        diagnostic.path().equals(path)
-                                && diagnostic.severity()
-                                        != io.github.khopland.xsd.validation.ValidationSeverity.WARNING));
+    boolean skippedOrLaxContent() {
+        return skippedOrLaxContent;
     }
 
     private static boolean hasNoErrors(StringList errors) {
