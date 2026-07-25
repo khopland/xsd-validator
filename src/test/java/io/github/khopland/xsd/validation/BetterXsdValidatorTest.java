@@ -13,6 +13,7 @@ import javax.xml.namespace.QName;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamSource;
+import org.apache.xerces.dom.DOMInputImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -202,6 +203,28 @@ class BetterXsdValidatorTest {
         assertThat(issue.code()).isEqualTo("CHOICE_ALREADY_SELECTED");
         assertThat(issue.actualElement()).isEqualTo(new QName("urn:types", "sms"));
         assertThat(issue.message()).contains("<email>", "mutually exclusive");
+    }
+
+    @Test
+    void doesNotApplyLifetimeBranchHistoryToARepeatingChoice() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="values">
+                    <xs:complexType>
+                      <xs:choice maxOccurs="2">
+                        <xs:element name="a"/>
+                        <xs:element name="b"/>
+                      </xs:choice>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue =
+                validator.validate(xml("<values><a/><b/><a/></values>")).issues().get(0);
+
+        assertThat(issue.code()).isNotEqualTo("CHOICE_ALREADY_SELECTED");
+        assertThat(issue.message()).doesNotContain("mutually exclusive", "<b> already selected");
     }
 
     @Test
@@ -1116,10 +1139,53 @@ class BetterXsdValidatorTest {
                 </xs:schema>
                 """);
         String largeXml = "<items>" + "<item>1</item>".repeat(10_000) + "</items>";
-        String deepXml = "<node>".repeat(300) + "</node>".repeat(300);
+        String deepXml = "<node>".repeat(200) + "</node>".repeat(200);
 
         assertThat(largeValidator.validate(xml(largeXml)).valid()).isTrue();
         assertThat(deepValidator.validate(xml(deepXml)).valid()).isTrue();
+    }
+
+    @Test
+    void stopsBeforePathTrackingLimitsCanGrowWithoutBound() throws Exception {
+        BetterXsdValidator deepValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="node">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element ref="node" minOccurs="0"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        BetterXsdValidator namesValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:any processContents="skip" maxOccurs="unbounded"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        String tooDeep = "<node>".repeat(257) + "</node>".repeat(257);
+        String distinctChildren = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(index -> "<name" + index + "/>")
+                .reduce("", String::concat);
+
+        ValidationReport depthReport = deepValidator.validate(xml(tooDeep));
+        ValidationReport namesReport =
+                namesValidator.validate(xml("<root>" + distinctChildren + "</root>"));
+
+        assertThat(depthReport.complete()).isFalse();
+        assertThat(depthReport.issues()).singleElement()
+                .extracting(ValidationIssue::code)
+                .isEqualTo("XML_PROCESSING_ERROR");
+        assertThat(namesReport.complete()).isFalse();
+        assertThat(namesReport.issues()).singleElement()
+                .extracting(ValidationIssue::code)
+                .isEqualTo("XML_PROCESSING_ERROR");
     }
 
     @Test
@@ -1203,6 +1269,41 @@ class BetterXsdValidatorTest {
                 .fingerprint();
 
         assertThat(changedFingerprint).isNotEqualTo(firstFingerprint);
+    }
+
+    @Test
+    void resolvesNonFileSchemaDependenciesWithAnExplicitResolver() throws Exception {
+        String dependency = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Identifier">
+                    <xs:restriction base="xs:string"/>
+                  </xs:simpleType>
+                </xs:schema>
+                """;
+        var reports = new java.util.ArrayList<ValidationReport>();
+
+        for (String location : java.util.List.of(
+                "memory:/types.xsd",
+                "classpath:/types.xsd",
+                "jar:file:/application.jar!/types.xsd")) {
+            StreamSource root = new StreamSource(new StringReader("""
+                    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                      <xs:include schemaLocation="%s"/>
+                      <xs:element name="id" type="Identifier"/>
+                    </xs:schema>
+                    """.formatted(location)));
+            BetterXsdValidator validator = BetterXsdValidator.compile(
+                    root,
+                    (type, namespaceUri, publicId, systemId, baseUri) -> {
+                        DOMInputImpl input = new DOMInputImpl();
+                        input.setSystemId(location);
+                        input.setStringData(dependency);
+                        return input;
+                    });
+            reports.add(validator.validate(xml("<id>abc</id>")));
+        }
+
+        assertThat(reports).allMatch(ValidationReport::valid);
     }
 
     @Test

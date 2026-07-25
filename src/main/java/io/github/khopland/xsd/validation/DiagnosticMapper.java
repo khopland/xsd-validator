@@ -80,173 +80,6 @@ final class DiagnosticMapper {
             return issue(diagnostic, "ROOT_NAMESPACE_MISMATCH", message);
         }
 
-        if ("cvc-elt.1.a".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "UNDECLARED_ROOT",
-                    "Root element " + element(diagnostic.actualElement())
-                            + " is not declared by the compiled schema.");
-        }
-
-        if ("xml-processing-stopped".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "XML_PROCESSING_ERROR",
-                    "XML validation could not process the supplied Source.");
-        }
-
-        if ("cvc-complex-type.4".equals(diagnostic.key())
-                || "cvc-complex-type.4_ns".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "REQUIRED_ATTRIBUTE_MISSING",
-                    "Required attribute " + attribute(actualAttribute)
-                            + " is missing from " + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    actualAttribute);
-        }
-
-        if ("cvc-complex-type.3.2.1".equals(diagnostic.key())
-                || "cvc-complex-type.3.2.2".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "ATTRIBUTE_NOT_ALLOWED",
-                    "Attribute " + attribute(actualAttribute)
-                            + " is not allowed on " + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    actualAttribute);
-        }
-
-        if ("cvc-attribute.3".equals(diagnostic.key())) {
-            String typeName = safeArgument(diagnostic.arguments(), 3)
-                    .orElse("the declared type");
-            return issue(
-                    diagnostic,
-                    "INVALID_ATTRIBUTE_VALUE",
-                    "Attribute " + attribute(actualAttribute)
-                            + " on " + element(diagnostic.actualElement())
-                            + " does not satisfy type '" + typeName + "'.",
-                    List.of(),
-                    actualAttribute);
-        }
-
-        if ("cvc-attribute.4".equals(diagnostic.key())
-                || "cvc-complex-type.3.1".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "ATTRIBUTE_FIXED_VALUE_MISMATCH",
-                    "Attribute " + attribute(actualAttribute)
-                            + " on " + element(diagnostic.actualElement())
-                            + " must use its schema-defined fixed value.",
-                    List.of(),
-                    actualAttribute);
-        }
-
-        if ("DuplicateKey".equals(diagnostic.key())) {
-            return identityIssue(
-                    diagnostic,
-                    "DUPLICATE_KEY",
-                    2,
-                    element(diagnostic.actualElement())
-                            + " duplicates a key required to be unique by identity constraint");
-        }
-
-        if ("DuplicateUnique".equals(diagnostic.key())) {
-            return identityIssue(
-                    diagnostic,
-                    "DUPLICATE_UNIQUE",
-                    2,
-                    element(diagnostic.actualElement())
-                            + " duplicates a value required to be unique by identity constraint");
-        }
-
-        if ("KeyNotFound".equals(diagnostic.key())) {
-            return identityIssue(
-                    diagnostic,
-                    "KEY_REFERENCE_NOT_FOUND",
-                    0,
-                    element(diagnostic.actualElement())
-                            + " contains a reference not found by identity constraint");
-        }
-
-        if ("AbsentKeyValue".equals(diagnostic.key())
-                || "KeyNotEnoughValues".equals(diagnostic.key())) {
-            return identityIssue(
-                    diagnostic,
-                    "KEY_VALUE_MISSING",
-                    1,
-                    element(diagnostic.actualElement())
-                            + " is missing a value required by identity constraint");
-        }
-
-        if ("cvc-elt.2".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE",
-                    "Abstract element " + element(diagnostic.actualElement())
-                            + " must be replaced by a permitted substitution-group member.");
-        }
-
-        if ("cvc-elt.4.1".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "INVALID_XSI_TYPE",
-                    "Attribute @xsi:type on " + element(diagnostic.actualElement())
-                            + " must contain a valid QName.",
-                    List.of(),
-                    XSI_TYPE);
-        }
-
-        if ("cvc-elt.4.2".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "XSI_TYPE_NOT_FOUND",
-                    "The schema cannot resolve @xsi:type on "
-                            + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    XSI_TYPE);
-        }
-
-        if ("cvc-elt.4.3".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "XSI_TYPE_NOT_DERIVED",
-                    "The type selected by @xsi:type is not permitted for "
-                            + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    XSI_TYPE);
-        }
-
-        if ("cvc-elt.3.1".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "XSI_NIL_NOT_ALLOWED",
-                    "Element " + element(diagnostic.actualElement())
-                            + " is not nillable, so @xsi:nil is not allowed.",
-                    List.of(),
-                    XSI_NIL);
-        }
-
-        if ("cvc-elt.3.2.1".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "NILLED_ELEMENT_HAS_CONTENT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " cannot contain content when @xsi:nil is true.",
-                    List.of(),
-                    XSI_NIL);
-        }
-
-        if ("cvc-elt.3.2.2".equals(diagnostic.key())) {
-            return issue(
-                    diagnostic,
-                    "XSI_NIL_FIXED_VALUE_CONFLICT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " has a fixed value and cannot use @xsi:nil.",
-                    List.of(),
-                    XSI_NIL);
-        }
-
         Optional<ChoiceIndex.Match> choice = choiceMatch(diagnostic, choices);
         if (choice.isPresent()) {
             ChoiceIndex.Match match = choice.get();
@@ -288,119 +121,248 @@ final class DiagnosticMapper {
                     expectedPreview);
         }
 
-        if (isFacetDiagnostic(diagnostic.key())) {
-            return facetIssue(diagnostic, actualAttribute);
-        }
-
-        if (diagnostic.key().startsWith("cvc-datatype-valid")) {
-            String typeName = safeArgument(diagnostic.arguments(), 1).orElse("the declared type");
-            String message = subject(diagnostic.actualElement(), actualAttribute)
-                    + " does not satisfy type '" + typeName + "'.";
-            return issue(diagnostic, "INVALID_VALUE", message, List.of(), actualAttribute);
-        }
-
-        if (diagnostic.severity() == io.github.khopland.xsd.validation.ValidationSeverity.FATAL) {
-            return issue(diagnostic, "MALFORMED_XML", "XML parsing stopped before the document ended.");
-        }
-
-        if ("cvc-complex-type.2.4.e".equals(diagnostic.key())
-                || "cvc-complex-type.2.4.f".equals(diagnostic.key())) {
-            int maximum = integerArgument(
-                    diagnostic.arguments(),
-                    "cvc-complex-type.2.4.e".equals(diagnostic.key()) ? 2 : 1);
-            ExpectedElements expected = "cvc-complex-type.2.4.e".equals(diagnostic.key())
-                    ? expectedElements(diagnostic.arguments(), 1)
-                    : ExpectedElements.EMPTY;
-            String message = "Element " + element(diagnostic.actualElement())
-                    + " exceeds its maximum occurrence"
-                    + (maximum > 0 ? " of " + maximum : "")
-                    + (expected.preview().isEmpty()
-                            ? "."
-                            : "; expected " + expected.description() + " instead.");
-            return issue(
+        String key = diagnostic.key();
+        return switch (key) {
+            case "cvc-elt.1.a" -> issue(
                     diagnostic,
-                    "MAX_OCCURS_EXCEEDED",
-                    message,
-                    expected.preview());
-        }
-
-        if ("cvc-complex-type.2.4.g".equals(diagnostic.key())
-                || "cvc-complex-type.2.4.h".equals(diagnostic.key())) {
-            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
-            int required = integerArgument(
-                    diagnostic.arguments(),
-                    "cvc-complex-type.2.4.h".equals(diagnostic.key()) ? 3 : -1);
-            return issue(
+                    "UNDECLARED_ROOT",
+                    "Root element " + element(diagnostic.actualElement())
+                            + " is not declared by the compiled schema.");
+            case "xml-processing-stopped" -> issue(
                     diagnostic,
-                    "MIN_OCCURS_NOT_MET",
+                    "XML_PROCESSING_ERROR",
+                    "XML validation could not process the supplied Source.");
+            case "cvc-complex-type.4", "cvc-complex-type.4_ns" -> issue(
+                    diagnostic,
+                    "REQUIRED_ATTRIBUTE_MISSING",
+                    "Required attribute " + attribute(actualAttribute)
+                            + " is missing from " + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-complex-type.3.2.1", "cvc-complex-type.3.2.2" -> issue(
+                    diagnostic,
+                    "ATTRIBUTE_NOT_ALLOWED",
+                    "Attribute " + attribute(actualAttribute)
+                            + " is not allowed on " + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-attribute.3" -> {
+                String typeName = safeArgument(diagnostic.arguments(), 3)
+                        .orElse("the declared type");
+                yield issue(
+                        diagnostic,
+                        "INVALID_ATTRIBUTE_VALUE",
+                        "Attribute " + attribute(actualAttribute)
+                                + " on " + element(diagnostic.actualElement())
+                                + " does not satisfy type '" + typeName + "'.",
+                        List.of(),
+                        actualAttribute);
+            }
+            case "cvc-attribute.4", "cvc-complex-type.3.1" -> issue(
+                    diagnostic,
+                    "ATTRIBUTE_FIXED_VALUE_MISMATCH",
+                    "Attribute " + attribute(actualAttribute)
+                            + " on " + element(diagnostic.actualElement())
+                            + " must use its schema-defined fixed value.",
+                    List.of(),
+                    actualAttribute);
+            case "DuplicateKey" -> identityIssue(
+                    diagnostic,
+                    "DUPLICATE_KEY",
+                    2,
+                    element(diagnostic.actualElement())
+                            + " duplicates a key required to be unique by identity constraint");
+            case "DuplicateUnique" -> identityIssue(
+                    diagnostic,
+                    "DUPLICATE_UNIQUE",
+                    2,
+                    element(diagnostic.actualElement())
+                            + " duplicates a value required to be unique by identity constraint");
+            case "KeyNotFound" -> identityIssue(
+                    diagnostic,
+                    "KEY_REFERENCE_NOT_FOUND",
+                    0,
+                    element(diagnostic.actualElement())
+                            + " contains a reference not found by identity constraint");
+            case "AbsentKeyValue", "KeyNotEnoughValues" -> identityIssue(
+                    diagnostic,
+                    "KEY_VALUE_MISSING",
+                    1,
+                    element(diagnostic.actualElement())
+                            + " is missing a value required by identity constraint");
+            case "cvc-elt.2" -> issue(
+                    diagnostic,
+                    "ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE",
+                    "Abstract element " + element(diagnostic.actualElement())
+                            + " must be replaced by a permitted substitution-group member.");
+            case "cvc-elt.4.1" -> issue(
+                    diagnostic,
+                    "INVALID_XSI_TYPE",
+                    "Attribute @xsi:type on " + element(diagnostic.actualElement())
+                            + " must contain a valid QName.",
+                    List.of(),
+                    XSI_TYPE);
+            case "cvc-elt.4.2" -> issue(
+                    diagnostic,
+                    "XSI_TYPE_NOT_FOUND",
+                    "The schema cannot resolve @xsi:type on "
+                            + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    XSI_TYPE);
+            case "cvc-elt.4.3" -> issue(
+                    diagnostic,
+                    "XSI_TYPE_NOT_DERIVED",
+                    "The type selected by @xsi:type is not permitted for "
+                            + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    XSI_TYPE);
+            case "cvc-elt.3.1" -> issue(
+                    diagnostic,
+                    "XSI_NIL_NOT_ALLOWED",
                     "Element " + element(diagnostic.actualElement())
-                            + " occurs too early; add "
-                            + count(required) + expected.description() + " first.",
-                    expected.preview());
-        }
-
-        if ("cvc-complex-type.2.4.i".equals(diagnostic.key())
-                || "cvc-complex-type.2.4.j".equals(diagnostic.key())) {
-            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
-            int required = integerArgument(
-                    diagnostic.arguments(),
-                    "cvc-complex-type.2.4.j".equals(diagnostic.key()) ? 3 : -1);
-            return issue(
+                            + " is not nillable, so @xsi:nil is not allowed.",
+                    List.of(),
+                    XSI_NIL);
+            case "cvc-elt.3.2.1" -> issue(
                     diagnostic,
-                    "MIN_OCCURS_NOT_MET",
+                    "NILLED_ELEMENT_HAS_CONTENT",
                     "Element " + element(diagnostic.actualElement())
-                            + " is incomplete; add "
-                            + count(required) + expected.description()
-                            + " before it closes.",
-                    expected.preview());
-        }
-
-        if ("cvc-complex-type.2.4.a".equals(diagnostic.key())) {
-            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
-            return issue(
+                            + " cannot contain content when @xsi:nil is true.",
+                    List.of(),
+                    XSI_NIL);
+            case "cvc-elt.3.2.2" -> issue(
                     diagnostic,
-                    "UNEXPECTED_ELEMENT",
+                    "XSI_NIL_FIXED_VALUE_CONFLICT",
                     "Element " + element(diagnostic.actualElement())
-                            + " is not permitted here; expected "
-                            + expected.description() + ".",
-                    expected.preview());
-        }
-
-        if ("cvc-complex-type.2.4.b".equals(diagnostic.key())) {
-            ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
-            return issue(
-                    diagnostic,
-                    "MISSING_ELEMENT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " is incomplete; add " + expected.description()
-                            + " before it closes.",
-                    expected.preview());
-        }
-
-        if ("cvc-complex-type.2.4.d".equals(diagnostic.key())
-                && diagnostic.actualElement() != null
-                && diagnostic.previousSiblings().stream()
-                        .map(DocumentPathTracker.SeenElement::name)
-                        .anyMatch(diagnostic.actualElement()::equals)) {
-            return issue(
-                    diagnostic,
-                    "DUPLICATE_ELEMENT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " already occurred and cannot occur again here.");
-        }
-
-        if (diagnostic.key().startsWith("cvc-complex-type.2.4")) {
-            return issue(
-                    diagnostic,
-                    "UNEXPECTED_ELEMENT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " is not permitted at this position.");
-        }
-
-        return issue(
-                diagnostic,
-                "SCHEMA_VALIDATION_ERROR",
-                "XML does not satisfy schema constraint '" + diagnostic.key() + "'.");
+                            + " has a fixed value and cannot use @xsi:nil.",
+                    List.of(),
+                    XSI_NIL);
+            case "cvc-enumeration-valid",
+                    "cvc-pattern-valid",
+                    "cvc-length-valid",
+                    "cvc-minLength-valid",
+                    "cvc-maxLength-valid",
+                    "cvc-minInclusive-valid",
+                    "cvc-minExclusive-valid",
+                    "cvc-maxInclusive-valid",
+                    "cvc-maxExclusive-valid",
+                    "cvc-totalDigits-valid",
+                    "cvc-fractionDigits-valid" -> facetIssue(diagnostic, actualAttribute);
+            case "cvc-complex-type.2.4.e", "cvc-complex-type.2.4.f" -> {
+                int maximum = integerArgument(
+                        diagnostic.arguments(),
+                        key.equals("cvc-complex-type.2.4.e") ? 2 : 1);
+                ExpectedElements expected = key.equals("cvc-complex-type.2.4.e")
+                        ? expectedElements(diagnostic.arguments(), 1)
+                        : ExpectedElements.EMPTY;
+                String message = "Element " + element(diagnostic.actualElement())
+                        + " exceeds its maximum occurrence"
+                        + (maximum > 0 ? " of " + maximum : "")
+                        + (expected.preview().isEmpty()
+                                ? "."
+                                : "; expected " + expected.description() + " instead.");
+                yield issue(
+                        diagnostic,
+                        "MAX_OCCURS_EXCEEDED",
+                        message,
+                        expected.preview());
+            }
+            case "cvc-complex-type.2.4.g", "cvc-complex-type.2.4.h" -> {
+                ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+                int required = integerArgument(
+                        diagnostic.arguments(),
+                        key.equals("cvc-complex-type.2.4.h") ? 3 : -1);
+                yield issue(
+                        diagnostic,
+                        "MIN_OCCURS_NOT_MET",
+                        "Element " + element(diagnostic.actualElement())
+                                + " occurs too early; add "
+                                + count(required) + expected.description() + " first.",
+                        expected.preview());
+            }
+            case "cvc-complex-type.2.4.i", "cvc-complex-type.2.4.j" -> {
+                ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+                int required = integerArgument(
+                        diagnostic.arguments(),
+                        key.equals("cvc-complex-type.2.4.j") ? 3 : -1);
+                yield issue(
+                        diagnostic,
+                        "MIN_OCCURS_NOT_MET",
+                        "Element " + element(diagnostic.actualElement())
+                                + " is incomplete; add "
+                                + count(required) + expected.description()
+                                + " before it closes.",
+                        expected.preview());
+            }
+            case "cvc-complex-type.2.4.a" -> {
+                ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+                yield issue(
+                        diagnostic,
+                        "UNEXPECTED_ELEMENT",
+                        "Element " + element(diagnostic.actualElement())
+                                + " is not permitted here; expected "
+                                + expected.description() + ".",
+                        expected.preview());
+            }
+            case "cvc-complex-type.2.4.b" -> {
+                ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
+                yield issue(
+                        diagnostic,
+                        "MISSING_ELEMENT",
+                        "Element " + element(diagnostic.actualElement())
+                                + " is incomplete; add " + expected.description()
+                                + " before it closes.",
+                        expected.preview());
+            }
+            case "cvc-complex-type.2.4.d" -> {
+                boolean duplicate = diagnostic.actualElement() != null
+                        && diagnostic.previousSiblings().stream()
+                                .map(DocumentPathTracker.SeenElement::name)
+                                .anyMatch(diagnostic.actualElement()::equals);
+                yield duplicate
+                        ? issue(
+                                diagnostic,
+                                "DUPLICATE_ELEMENT",
+                                "Element " + element(diagnostic.actualElement())
+                                        + " already occurred and cannot occur again here.")
+                        : issue(
+                                diagnostic,
+                                "UNEXPECTED_ELEMENT",
+                                "Element " + element(diagnostic.actualElement())
+                                        + " is not permitted at this position.");
+            }
+            default -> {
+                if (key.startsWith("cvc-datatype-valid")) {
+                    String typeName = safeArgument(diagnostic.arguments(), 1)
+                            .orElse("the declared type");
+                    String message = subject(diagnostic.actualElement(), actualAttribute)
+                            + " does not satisfy type '" + typeName + "'.";
+                    yield issue(
+                            diagnostic,
+                            "INVALID_VALUE",
+                            message,
+                            List.of(),
+                            actualAttribute);
+                }
+                if (diagnostic.severity() == ValidationSeverity.FATAL) {
+                    yield issue(
+                            diagnostic,
+                            "MALFORMED_XML",
+                            "XML parsing stopped before the document ended.");
+                }
+                if (key.startsWith("cvc-complex-type.2.4")) {
+                    yield issue(
+                            diagnostic,
+                            "UNEXPECTED_ELEMENT",
+                            "Element " + element(diagnostic.actualElement())
+                                    + " is not permitted at this position.");
+                }
+                yield issue(
+                        diagnostic,
+                        "SCHEMA_VALIDATION_ERROR",
+                        "XML does not satisfy schema constraint '" + key + "'.");
+            }
+        };
     }
 
     private static Optional<ChoiceIndex.Match> choiceMatch(

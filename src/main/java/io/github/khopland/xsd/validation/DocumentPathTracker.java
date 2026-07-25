@@ -14,6 +14,8 @@ import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
 final class DocumentPathTracker extends DefaultHandler {
+    private static final int MAX_DEPTH = 256;
+    private static final int MAX_DISTINCT_CHILD_NAMES = 100;
     private static final int MAX_RETAINED_CHILDREN = 100;
     private static final int MAX_RETAINED_ATTRIBUTES = 100;
 
@@ -57,8 +59,14 @@ final class DocumentPathTracker extends DefaultHandler {
     @Override
     public void startElement(String uri, String localName, String qName, Attributes attributes)
             throws SAXException {
+        if (path.size() == MAX_DEPTH) {
+            throw new SAXException("XML nesting depth exceeds the validation limit.");
+        }
         QName name = new QName(uri == null ? "" : uri, localName(localName, qName));
         Map<QName, Integer> counts = path.isEmpty() ? rootCounts : path.peekLast().childCounts;
+        if (!counts.containsKey(name) && counts.size() == MAX_DISTINCT_CHILD_NAMES) {
+            throw new SAXException("Distinct child names exceed the validation limit.");
+        }
         int index = counts.merge(name, 1, Integer::sum);
         path.addLast(new Frame(name, index, line(), attributeNames(attributes)));
         delegate.startElement(uri, localName, qName, attributes);

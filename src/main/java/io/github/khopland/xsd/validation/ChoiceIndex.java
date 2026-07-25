@@ -124,18 +124,22 @@ final class ChoiceIndex {
             return;
         }
         QName parentName = name(element);
-        findChoices(parentName, type.getParticle(), choices);
+        findChoices(parentName, type.getParticle(), choices, false);
         indexChildElements(type.getParticle(), choices, visited);
     }
 
     private static void findChoices(
             QName parentName,
             XSParticle particle,
-            List<Choice> choices) {
+            List<Choice> choices,
+            boolean insideRepeatingParticle) {
         if (!(particle.getTerm() instanceof XSModelGroup group)) {
             return;
         }
-        if (group.getCompositor() == XSModelGroup.COMPOSITOR_CHOICE) {
+        boolean repeating = insideRepeatingParticle
+                || particle.getMaxOccursUnbounded()
+                || particle.getMaxOccurs() > 1;
+        if (!repeating && group.getCompositor() == XSModelGroup.COMPOSITOR_CHOICE) {
             List<Branch> branches = new ArrayList<>();
             for (Object object : group.getParticles()) {
                 List<ElementUse> elements = branchElements((XSParticle) object, true);
@@ -148,7 +152,7 @@ final class ChoiceIndex {
             }
         }
         for (Object object : group.getParticles()) {
-            findChoices(parentName, (XSParticle) object, choices);
+            findChoices(parentName, (XSParticle) object, choices, repeating);
         }
     }
 

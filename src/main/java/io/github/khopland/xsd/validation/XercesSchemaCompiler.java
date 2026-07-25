@@ -4,6 +4,8 @@ import io.github.khopland.xsd.validation.SchemaCompilationException;
 import io.github.khopland.xsd.validation.SchemaIdentity;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.Reader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -34,17 +36,22 @@ final class XercesSchemaCompiler {
     private XercesSchemaCompiler() {
     }
 
-    static CompiledSchema compile(Source source) throws SchemaCompilationException {
+    static CompiledSchema compile(
+            Source source,
+            LSResourceResolver resourceResolver)
+            throws SchemaCompilationException {
         SourceSnapshot snapshot = SourceSnapshot.read(source);
         Document document = parseForMetadata(snapshot);
 
-        if (snapshot.systemId() == null && hasRelativeDependencies(document)) {
+        if (snapshot.systemId() == null
+                && resourceResolver == null
+                && hasRelativeDependencies(document)) {
             throw new SchemaCompilationException(
                     "A schema with relative imports or includes needs a Source system ID.");
         }
 
         try {
-            LocalSchemaResolver resolver = new LocalSchemaResolver();
+            LocalSchemaResolver resolver = new LocalSchemaResolver(resourceResolver);
             XMLSchemaFactory factory = new XMLSchemaFactory();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature(
@@ -133,7 +140,12 @@ final class XercesSchemaCompiler {
     }
 
     private static final class LocalSchemaResolver implements LSResourceResolver {
+        private final LSResourceResolver delegate;
         private final Map<String, byte[]> dependencies = new TreeMap<>();
+
+        private LocalSchemaResolver(LSResourceResolver delegate) {
+            this.delegate = delegate;
+        }
 
         @Override
         public LSInput resolveResource(
@@ -147,6 +159,17 @@ final class XercesSchemaCompiler {
                     throw new LSException(
                             LSException.PARSE_ERR,
                             "Only XSD dependencies are allowed.");
+                }
+                if (delegate != null) {
+                    LSInput input = delegate.resolveResource(
+                            type,
+                            namespaceUri,
+                            publicId,
+                            systemId,
+                            baseUri);
+                    if (input != null) {
+                        return capture(input, publicId, systemId, baseUri);
+                    }
                 }
                 URI resolved = baseUri == null
                         ? URI.create(systemId)
@@ -173,6 +196,64 @@ final class XercesSchemaCompiler {
 
         Map<String, byte[]> dependencies() {
             return dependencies;
+        }
+
+        private LSInput capture(
+                LSInput input,
+                String publicId,
+                String requestedSystemId,
+                String baseUri)
+                throws IOException {
+            byte[] bytes;
+            String encoding = input.getEncoding();
+            if (input.getByteStream() != null) {
+                bytes = input.getByteStream().readAllBytes();
+            } else if (input.getCharacterStream() != null) {
+                bytes = read(input.getCharacterStream()).getBytes(StandardCharsets.UTF_8);
+                encoding = StandardCharsets.UTF_8.name();
+            } else if (input.getStringData() != null) {
+                bytes = input.getStringData().getBytes(StandardCharsets.UTF_8);
+                encoding = StandardCharsets.UTF_8.name();
+            } else {
+                throw new LSException(
+                        LSException.PARSE_ERR,
+                        "The explicit schema resolver returned no content.");
+            }
+
+            String resolvedSystemId = resolvedSystemId(
+                    input.getSystemId(),
+                    requestedSystemId,
+                    baseUri);
+            dependencies.put(resolvedSystemId, bytes);
+            return new DOMInputImpl(
+                    input.getPublicId() == null ? publicId : input.getPublicId(),
+                    resolvedSystemId,
+                    baseUri,
+                    new ByteArrayInputStream(bytes),
+                    encoding);
+        }
+
+        private static String read(Reader reader) throws IOException {
+            StringWriter text = new StringWriter();
+            reader.transferTo(text);
+            return text.toString();
+        }
+
+        private static String resolvedSystemId(
+                String suppliedSystemId,
+                String requestedSystemId,
+                String baseUri) {
+            String systemId = suppliedSystemId == null
+                    ? requestedSystemId
+                    : suppliedSystemId;
+            if (systemId == null) {
+                throw new LSException(
+                        LSException.PARSE_ERR,
+                        "The explicit schema resolver returned no system ID.");
+            }
+            return baseUri == null
+                    ? systemId
+                    : URI.create(baseUri).resolve(systemId).toString();
         }
     }
 
