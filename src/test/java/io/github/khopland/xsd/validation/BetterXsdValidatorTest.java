@@ -3,6 +3,7 @@ package io.github.khopland.xsd.validation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.github.khopland.xsd.validation.ValidationObservation.RawDiagnostic;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
@@ -128,7 +129,7 @@ class BetterXsdValidatorTest {
                         new QName("value"),
                         new QName("b"),
                         java.util.List.of(
-                                new DocumentPathTracker.SeenElement(new QName("c"), 1))))
+                                new QName("c"))))
                 .isEmpty();
         assertThat(compile(schema)
                         .validate(xml("<value><c/><b/></value>"))
@@ -1251,7 +1252,7 @@ class BetterXsdValidatorTest {
         assertThat(java.util.List.of(
                         XercesSchemaCompiler.class,
                         XercesSchemaCompiler.CompiledSchema.class,
-                        XercesValidationSession.class))
+                        ValidationObservation.class))
                 .allSatisfy(type ->
                         assertThat(Modifier.isPublic(type.getModifiers())).isFalse());
     }

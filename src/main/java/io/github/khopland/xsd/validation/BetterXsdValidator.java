@@ -51,6 +51,6 @@ public final class BetterXsdValidator {
      * @return the immutable validation report
      */
     public ValidationReport validate(Source xmlSource) {
-        return XercesValidationSession.validate(compiledSchema, xmlSource);
+        return ValidationObservation.validate(compiledSchema, xmlSource);
     }
 }

@@ -1,5 +1,7 @@
 package io.github.khopland.xsd.validation;
 
+import io.github.khopland.xsd.validation.ValidationObservation.RawDiagnostic;
+import io.github.khopland.xsd.validation.ValidationObservation.SeenElement;
 import org.jspecify.annotations.Nullable;
 
 import javax.xml.XMLConstants;
@@ -93,8 +95,8 @@ final class DiagnosticMapper {
             ChoiceIndex.Match match = choice.get();
             String message = element(diagnostic.actualElement())
                     + " cannot occur here: "
-                    + element(match.selectedBy().name())
-                    + location(match.selectedBy().line())
+                    + element(match.selectedBy())
+                    + location(lineOf(diagnostic.previousSiblings(), match.selectedBy()))
                     + " already selected a mutually exclusive choice.";
             List<QName> remaining = match.remainingElements();
             if (!remaining.isEmpty()) {
@@ -115,8 +117,8 @@ final class DiagnosticMapper {
                     .limit(MAX_EXPECTED_ELEMENTS)
                     .toList()
                     : expected.preview();
-            String message = element(match.selectedBy().name())
-                    + location(match.selectedBy().line())
+            String message = element(match.selectedBy())
+                    + location(lineOf(diagnostic.children(), match.selectedBy()))
                     + " selected a choice branch that is incomplete. Add "
                     + renderElements(match.remainingElements())
                     + " before " + element(diagnostic.actualElement()) + " closes.";
@@ -322,7 +324,7 @@ final class DiagnosticMapper {
             }
             case "cvc-complex-type.2.4.d" -> {
                 long previousOccurrences = diagnostic.previousSiblings().stream()
-                        .map(DocumentPathTracker.SeenElement::name)
+                        .map(SeenElement::name)
                         .filter(name -> name.equals(diagnostic.actualElement()))
                         .count();
                 int maximumOccurrences = choices.maximumOccurrences(
@@ -389,7 +391,7 @@ final class DiagnosticMapper {
                 diagnostic.parentType(),
                 diagnostic.parentElement(),
                 diagnostic.actualElement(),
-                diagnostic.previousSiblings());
+                names(diagnostic.previousSiblings()));
     }
 
     private static Optional<ChoiceIndex.IncompleteMatch> incompleteChoice(
@@ -402,7 +404,7 @@ final class DiagnosticMapper {
         return choices.incomplete(
                 diagnostic.actualType(),
                 diagnostic.actualElement(),
-                diagnostic.children()).filter(match -> {
+                names(diagnostic.children())).filter(match -> {
             ExpectedElements expected = expectedElements(diagnostic.arguments(), 1);
             return expected.preview().isEmpty()
                     || expected.preview().stream()
@@ -729,6 +731,18 @@ final class DiagnosticMapper {
 
     private static String location(int line) {
         return line > 0 ? " at line " + line : "";
+    }
+
+    private static List<QName> names(List<SeenElement> elements) {
+        return elements.stream().map(SeenElement::name).toList();
+    }
+
+    private static int lineOf(List<SeenElement> elements, QName name) {
+        return elements.stream()
+                .filter(element -> element.name().equals(name))
+                .mapToInt(SeenElement::line)
+                .findFirst()
+                .orElse(-1);
     }
 
     private static IssueBuilder issue(RawDiagnostic diagnostic, String code, String message) {
