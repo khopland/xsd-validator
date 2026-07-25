@@ -99,6 +99,7 @@ final class DiagnosticCollector implements XMLErrorHandler {
                 context.actualElement(),
                 context.parentElement(),
                 context.previousSiblings(),
-                context.children()));
+                context.children(),
+                context.attributes()));
     }
 }

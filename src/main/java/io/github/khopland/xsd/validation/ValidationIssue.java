@@ -15,6 +15,7 @@ public record ValidationIssue(
         int line,
         int column,
         QName actualElement,
+        QName actualAttribute,
         List<QName> expectedElements,
         List<String> schemaCodes) {
 

@@ -361,6 +361,173 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void previewsLongEnumerationsWithoutRetainingTheSubmittedValue() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Role">
+                    <xs:restriction base="xs:string">
+                      <xs:enumeration value="one"/>
+                      <xs:enumeration value="two"/>
+                      <xs:enumeration value="three"/>
+                      <xs:enumeration value="four"/>
+                      <xs:enumeration value="five"/>
+                      <xs:enumeration value="six"/>
+                      <xs:enumeration value="seven"/>
+                      <xs:enumeration value="eight"/>
+                      <xs:enumeration value="nine"/>
+                      <xs:enumeration value="ten"/>
+                      <xs:enumeration value="eleven"/>
+                      <xs:enumeration value="twelve"/>
+                      <xs:enumeration value="thirteen"/>
+                      <xs:enumeration value="fourteen"/>
+                      <xs:enumeration value="fifteen"/>
+                      <xs:enumeration value="sixteen"/>
+                      <xs:enumeration value="seventeen"/>
+                      <xs:enumeration value="eighteen"/>
+                    </xs:restriction>
+                  </xs:simpleType>
+                  <xs:element name="role" type="Role"/>
+                </xs:schema>
+                """);
+
+        ValidationReport report =
+                validator.validate(xml("<role>private-submitted-value</role>"));
+
+        assertThat(report.rawEventCount()).isEqualTo(2);
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("ENUMERATION_VIOLATION");
+            assertThat(issue.message())
+                    .contains("‘one’", "‘five’", "and 13 more")
+                    .doesNotContain("private-submitted-value");
+            assertThat(issue.schemaCodes())
+                    .containsExactly("cvc-enumeration-valid", "cvc-type.3.1.3");
+        });
+        assertThat(report.toString()).doesNotContain("private-submitted-value");
+    }
+
+    @Test
+    void reportsPatternLengthAndNumericFacetsWithoutRawValues() throws Exception {
+        BetterXsdValidator patternValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Code">
+                    <xs:restriction base="xs:string">
+                      <xs:pattern value="[A-Z]{3}"/>
+                    </xs:restriction>
+                  </xs:simpleType>
+                  <xs:element name="code" type="Code"/>
+                </xs:schema>
+                """);
+        BetterXsdValidator lengthValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Code">
+                    <xs:restriction base="xs:string">
+                      <xs:maxLength value="3"/>
+                    </xs:restriction>
+                  </xs:simpleType>
+                  <xs:element name="code" type="Code"/>
+                </xs:schema>
+                """);
+        BetterXsdValidator minimumValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Amount">
+                    <xs:restriction base="xs:decimal">
+                      <xs:minInclusive value="10"/>
+                    </xs:restriction>
+                  </xs:simpleType>
+                  <xs:element name="amount" type="Amount"/>
+                </xs:schema>
+                """);
+
+        ValidationIssue pattern =
+                patternValidator.validate(xml("<code>private-pattern</code>")).issues().get(0);
+        ValidationIssue length =
+                lengthValidator.validate(xml("<code>private-length</code>")).issues().get(0);
+        ValidationIssue minimum =
+                minimumValidator.validate(xml("<amount>1</amount>")).issues().get(0);
+
+        assertThat(pattern.code()).isEqualTo("PATTERN_MISMATCH");
+        assertThat(pattern.message()).doesNotContain("private-pattern");
+        assertThat(length.code()).isEqualTo("LENGTH_VIOLATION");
+        assertThat(length.message()).contains("length at most 3").doesNotContain("private-length");
+        assertThat(minimum.code()).isEqualTo("MINIMUM_VIOLATION");
+        assertThat(minimum.message()).contains("at least 10").doesNotContain(">1<");
+    }
+
+    @Test
+    void reportsRequiredAndUnexpectedAttributesByQName() throws Exception {
+        BetterXsdValidator requiredValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:people"
+                           xmlns="urn:people"
+                           elementFormDefault="qualified"
+                           attributeFormDefault="qualified">
+                  <xs:element name="person">
+                    <xs:complexType>
+                      <xs:attribute name="id" type="xs:string" use="required"/>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        BetterXsdValidator unexpectedValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="person">
+                    <xs:complexType/>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue required =
+                requiredValidator.validate(xml("<person xmlns=\"urn:people\"/>")).issues().get(0);
+        ValidationIssue unexpected = unexpectedValidator
+                .validate(xml("<person extra=\"private-value\"/>"))
+                .issues()
+                .get(0);
+
+        assertThat(required.code()).isEqualTo("REQUIRED_ATTRIBUTE_MISSING");
+        assertThat(required.actualAttribute()).isEqualTo(new QName("urn:people", "id"));
+        assertThat(required.message()).contains("@id", "<person>");
+        assertThat(unexpected.code()).isEqualTo("ATTRIBUTE_NOT_ALLOWED");
+        assertThat(unexpected.actualAttribute()).isEqualTo(new QName("extra"));
+        assertThat(unexpected.message())
+                .contains("@extra", "<person>")
+                .doesNotContain("private-value");
+    }
+
+    @Test
+    void groupsInvalidAttributeFacetEventsAndKeepsTheAttributeQName() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:simpleType name="Role">
+                    <xs:restriction base="xs:string">
+                      <xs:enumeration value="reader"/>
+                      <xs:enumeration value="writer"/>
+                    </xs:restriction>
+                  </xs:simpleType>
+                  <xs:element name="person">
+                    <xs:complexType>
+                      <xs:attribute name="role" type="Role"/>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report =
+                validator.validate(xml("<person role=\"private-role\"/>"));
+
+        assertThat(report.rawEventCount()).isEqualTo(2);
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("ENUMERATION_VIOLATION");
+            assertThat(issue.actualAttribute()).isEqualTo(new QName("role"));
+            assertThat(issue.message())
+                    .contains("@role", "‘reader’", "‘writer’")
+                    .doesNotContain("private-role");
+            assertThat(issue.schemaCodes())
+                    .containsExactly("cvc-enumeration-valid", "cvc-attribute.3");
+        });
+        assertThat(report.toString()).doesNotContain("private-role");
+    }
+
+    @Test
     void returnsEveryRecoverableErrorInDocumentOrder() throws Exception {
         BetterXsdValidator validator = compile("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">

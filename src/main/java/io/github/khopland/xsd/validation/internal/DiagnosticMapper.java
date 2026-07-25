@@ -10,6 +10,8 @@ import javax.xml.namespace.QName;
 
 final class DiagnosticMapper {
     private static final int MAX_EXPECTED_ELEMENTS = 5;
+    private static final int MAX_ENUM_VALUES = 5;
+    private static final int MAX_ENUM_VALUE_LENGTH = 40;
     private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[\\p{Alnum}_.:-]{1,100}");
     private static final Pattern QUALIFIED_ELEMENT =
             Pattern.compile("^\"([^\"]*)\":([\\p{Alnum}_.-]+)$");
@@ -22,12 +24,24 @@ final class DiagnosticMapper {
             SchemaIdentity schema,
             ChoiceIndex choices) {
         List<IssueBuilder> issues = new ArrayList<>();
-        for (RawDiagnostic diagnostic : diagnostics) {
-            if (isGenericTypeDuplicate(diagnostic, issues)) {
-                issues.get(issues.size() - 1).schemaCodes.add(diagnostic.key());
-                continue;
+        for (int index = 0; index < diagnostics.size(); index++) {
+            RawDiagnostic diagnostic = diagnostics.get(index);
+            if (index + 1 < diagnostics.size()
+                    && isValueCompanion(diagnostic, diagnostics.get(index + 1))) {
+                RawDiagnostic companion = diagnostics.get(++index);
+                QName attribute = "cvc-attribute.3".equals(companion.key())
+                        ? attributeName(companion)
+                        : null;
+                IssueBuilder issue = mapOne(diagnostic, schema, choices, attribute);
+                issue.schemaCodes.add(companion.key());
+                issues.add(issue);
+            } else {
+                issues.add(mapOne(
+                        diagnostic,
+                        schema,
+                        choices,
+                        attributeName(diagnostic)));
             }
-            issues.add(mapOne(diagnostic, schema, choices));
         }
         return issues.stream().map(IssueBuilder::build).toList();
     }
@@ -35,7 +49,8 @@ final class DiagnosticMapper {
     private static IssueBuilder mapOne(
             RawDiagnostic diagnostic,
             SchemaIdentity schema,
-            ChoiceIndex choices) {
+            ChoiceIndex choices,
+            QName actualAttribute) {
         if ("cvc-elt.1.a".equals(diagnostic.key())
                 && !namespace(diagnostic.actualElement()).equals(schema.targetNamespace())) {
             String actualNamespace = namespace(diagnostic.actualElement());
@@ -51,6 +66,41 @@ final class DiagnosticMapper {
                     "UNDECLARED_ROOT",
                     "Root element " + element(diagnostic.actualElement())
                             + " is not declared by the compiled schema.");
+        }
+
+        if ("cvc-complex-type.4".equals(diagnostic.key())
+                || "cvc-complex-type.4_ns".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "REQUIRED_ATTRIBUTE_MISSING",
+                    "Required attribute " + attribute(actualAttribute)
+                            + " is missing from " + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    actualAttribute);
+        }
+
+        if ("cvc-complex-type.3.2.1".equals(diagnostic.key())
+                || "cvc-complex-type.3.2.2".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "ATTRIBUTE_NOT_ALLOWED",
+                    "Attribute " + attribute(actualAttribute)
+                            + " is not allowed on " + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    actualAttribute);
+        }
+
+        if ("cvc-attribute.3".equals(diagnostic.key())) {
+            String typeName = safeArgument(diagnostic.arguments(), 3)
+                    .orElse("the declared type");
+            return issue(
+                    diagnostic,
+                    "INVALID_ATTRIBUTE_VALUE",
+                    "Attribute " + attribute(actualAttribute)
+                            + " on " + element(diagnostic.actualElement())
+                            + " does not satisfy type '" + typeName + "'.",
+                    List.of(),
+                    actualAttribute);
         }
 
         Optional<ChoiceIndex.Match> choice = choiceMatch(diagnostic, choices);
@@ -97,11 +147,15 @@ final class DiagnosticMapper {
                     expectedPreview);
         }
 
+        if (isFacetDiagnostic(diagnostic.key())) {
+            return facetIssue(diagnostic, actualAttribute);
+        }
+
         if (diagnostic.key().startsWith("cvc-datatype-valid")) {
             String typeName = safeArgument(diagnostic.arguments(), 1).orElse("the declared type");
-            String message = "Element " + element(diagnostic.actualElement())
+            String message = subject(diagnostic.actualElement(), actualAttribute)
                     + " does not satisfy type '" + typeName + "'.";
-            return issue(diagnostic, "INVALID_VALUE", message);
+            return issue(diagnostic, "INVALID_VALUE", message, List.of(), actualAttribute);
         }
 
         if (diagnostic.severity() == io.github.khopland.xsd.validation.ValidationSeverity.FATAL) {
@@ -241,17 +295,161 @@ final class DiagnosticMapper {
                 });
     }
 
-    private static boolean isGenericTypeDuplicate(
+    private static IssueBuilder facetIssue(
             RawDiagnostic diagnostic,
-            List<IssueBuilder> issues) {
-        if (!"cvc-type.3.1.3".equals(diagnostic.key()) || issues.isEmpty()) {
-            return false;
+            QName actualAttribute) {
+        String subject = subject(diagnostic.actualElement(), actualAttribute);
+        return switch (diagnostic.key()) {
+            case "cvc-enumeration-valid" -> {
+                AllowedValues allowed = allowedValues(diagnostic.arguments(), 1);
+                yield issue(
+                        diagnostic,
+                        "ENUMERATION_VIOLATION",
+                        subject + " must be " + allowed.description() + ".",
+                        List.of(),
+                        actualAttribute);
+            }
+            case "cvc-pattern-valid" -> issue(
+                    diagnostic,
+                    "PATTERN_MISMATCH",
+                    subject + " does not match its schema pattern.",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-length-valid" -> issue(
+                    diagnostic,
+                    "LENGTH_VIOLATION",
+                    subject + " must have length "
+                            + schemaArgument(diagnostic.arguments(), 2)
+                            + "; its submitted length is "
+                            + schemaArgument(diagnostic.arguments(), 1) + ".",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-minLength-valid" -> issue(
+                    diagnostic,
+                    "LENGTH_VIOLATION",
+                    subject + " must have length at least "
+                            + schemaArgument(diagnostic.arguments(), 2)
+                            + "; its submitted length is "
+                            + schemaArgument(diagnostic.arguments(), 1) + ".",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-maxLength-valid" -> issue(
+                    diagnostic,
+                    "LENGTH_VIOLATION",
+                    subject + " must have length at most "
+                            + schemaArgument(diagnostic.arguments(), 2)
+                            + "; its submitted length is "
+                            + schemaArgument(diagnostic.arguments(), 1) + ".",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-minInclusive-valid" -> boundIssue(
+                    diagnostic, actualAttribute, subject, "at least", "MINIMUM_VIOLATION");
+            case "cvc-minExclusive-valid" -> boundIssue(
+                    diagnostic, actualAttribute, subject, "greater than", "MINIMUM_VIOLATION");
+            case "cvc-maxInclusive-valid" -> boundIssue(
+                    diagnostic, actualAttribute, subject, "at most", "MAXIMUM_VIOLATION");
+            case "cvc-maxExclusive-valid" -> boundIssue(
+                    diagnostic, actualAttribute, subject, "less than", "MAXIMUM_VIOLATION");
+            case "cvc-totalDigits-valid" -> issue(
+                    diagnostic,
+                    "TOTAL_DIGITS_EXCEEDED",
+                    subject + " may contain at most "
+                            + schemaArgument(diagnostic.arguments(), 2)
+                            + " total digits.",
+                    List.of(),
+                    actualAttribute);
+            case "cvc-fractionDigits-valid" -> issue(
+                    diagnostic,
+                    "FRACTION_DIGITS_EXCEEDED",
+                    subject + " may contain at most "
+                            + schemaArgument(diagnostic.arguments(), 2)
+                            + " fractional digits.",
+                    List.of(),
+                    actualAttribute);
+            default -> throw new IllegalArgumentException(
+                    "Unsupported facet key: " + diagnostic.key());
+        };
+    }
+
+    private static IssueBuilder boundIssue(
+            RawDiagnostic diagnostic,
+            QName actualAttribute,
+            String subject,
+            String comparison,
+            String code) {
+        return issue(
+                diagnostic,
+                code,
+                subject + " must be " + comparison + " "
+                        + schemaArgument(diagnostic.arguments(), 1) + ".",
+                List.of(),
+                actualAttribute);
+    }
+
+    private static boolean isValueCompanion(
+            RawDiagnostic specific,
+            RawDiagnostic companion) {
+        return isValueDiagnostic(specific.key())
+                && ("cvc-type.3.1.3".equals(companion.key())
+                        || "cvc-attribute.3".equals(companion.key()))
+                && specific.path().equals(companion.path())
+                && specific.line() == companion.line();
+    }
+
+    private static boolean isValueDiagnostic(String key) {
+        return key.startsWith("cvc-datatype-valid") || isFacetDiagnostic(key);
+    }
+
+    private static boolean isFacetDiagnostic(String key) {
+        return switch (key) {
+            case "cvc-enumeration-valid",
+                    "cvc-pattern-valid",
+                    "cvc-length-valid",
+                    "cvc-minLength-valid",
+                    "cvc-maxLength-valid",
+                    "cvc-minInclusive-valid",
+                    "cvc-minExclusive-valid",
+                    "cvc-maxInclusive-valid",
+                    "cvc-maxExclusive-valid",
+                    "cvc-totalDigits-valid",
+                    "cvc-fractionDigits-valid" -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAttributeDiagnostic(String key) {
+        return key.startsWith("cvc-attribute.")
+                || key.startsWith("cvc-complex-type.3.")
+                || key.equals("cvc-complex-type.4")
+                || key.equals("cvc-complex-type.4_ns");
+    }
+
+    private static QName attributeName(RawDiagnostic diagnostic) {
+        if (!isAttributeDiagnostic(diagnostic.key())
+                || diagnostic.arguments().length < 2
+                || diagnostic.arguments()[1] == null) {
+            return null;
         }
-        IssueBuilder previous = issues.get(issues.size() - 1);
-        return previous.path.equals(diagnostic.path())
-                && previous.line == diagnostic.line()
-                && previous.schemaCodes.stream()
-                        .anyMatch(code -> code.startsWith("cvc-datatype-valid"));
+        String lexicalName = diagnostic.arguments()[1].toString();
+        int separator = lexicalName.indexOf(':');
+        String localName = separator < 0
+                ? lexicalName
+                : lexicalName.substring(separator + 1);
+        if (!SAFE_TYPE_NAME.matcher(localName).matches()) {
+            return null;
+        }
+        Optional<QName> present = diagnostic.attributes().stream()
+                .filter(name -> name.getLocalPart().equals(localName))
+                .findFirst();
+        if (present.isPresent()) {
+            return present.get();
+        }
+        if ("cvc-complex-type.4_ns".equals(diagnostic.key())
+                && diagnostic.arguments().length > 2
+                && diagnostic.arguments()[2] != null) {
+            return new QName(diagnostic.arguments()[2].toString(), localName);
+        }
+        return new QName(localName);
     }
 
     private static Optional<String> safeArgument(Object[] arguments, int index) {
@@ -262,6 +460,47 @@ final class DiagnosticMapper {
         return SAFE_TYPE_NAME.matcher(candidate).matches()
                 ? Optional.of(candidate)
                 : Optional.empty();
+    }
+
+    private static String schemaArgument(Object[] arguments, int index) {
+        if (arguments.length <= index || arguments[index] == null) {
+            return "the schema limit";
+        }
+        String value = arguments[index].toString();
+        if (value.chars().anyMatch(Character::isISOControl)) {
+            return "the schema limit";
+        }
+        return value.length() <= 80 ? value : value.substring(0, 80) + "…";
+    }
+
+    private static AllowedValues allowedValues(Object[] arguments, int index) {
+        if (arguments.length <= index || arguments[index] == null) {
+            return AllowedValues.EMPTY;
+        }
+        String value = arguments[index].toString();
+        if (value.startsWith("[") && value.endsWith("]")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        // ponytail: Xerces flattens enum facets into one string; use XSModel when
+        // comma-containing enumeration values need lossless structured previews.
+        List<String> values = value.isEmpty()
+                ? List.of()
+                : List.of(value.split(", ", -1));
+        return new AllowedValues(
+                values.stream()
+                        .limit(MAX_ENUM_VALUES)
+                        .map(DiagnosticMapper::boundedEnumValue)
+                        .toList(),
+                values.size());
+    }
+
+    private static String boundedEnumValue(String value) {
+        String safe = value.chars().anyMatch(Character::isISOControl)
+                ? "…"
+                : value;
+        return safe.length() <= MAX_ENUM_VALUE_LENGTH
+                ? safe
+                : safe.substring(0, MAX_ENUM_VALUE_LENGTH) + "…";
     }
 
     private static int integerArgument(Object[] arguments, int index) {
@@ -354,6 +593,16 @@ final class DiagnosticMapper {
         return name == null ? "the current element" : "<" + name.getLocalPart() + ">";
     }
 
+    private static String attribute(QName name) {
+        return name == null ? "the current attribute" : "@" + name.getLocalPart();
+    }
+
+    private static String subject(QName element, QName attribute) {
+        return attribute == null
+                ? "Element " + element(element)
+                : "Attribute " + attribute(attribute) + " on " + element(element);
+    }
+
     private static String location(int line) {
         return line > 0 ? " at line " + line : "";
     }
@@ -367,6 +616,15 @@ final class DiagnosticMapper {
             String code,
             String message,
             List<QName> expectedElements) {
+        return issue(diagnostic, code, message, expectedElements, null);
+    }
+
+    private static IssueBuilder issue(
+            RawDiagnostic diagnostic,
+            String code,
+            String message,
+            List<QName> expectedElements,
+            QName actualAttribute) {
         return new IssueBuilder(
                 diagnostic.severity(),
                 code,
@@ -375,6 +633,7 @@ final class DiagnosticMapper {
                 diagnostic.line(),
                 diagnostic.column(),
                 diagnostic.actualElement(),
+                actualAttribute,
                 expectedElements,
                 new ArrayList<>(List.of(diagnostic.key())));
     }
@@ -387,6 +646,7 @@ final class DiagnosticMapper {
         private final int line;
         private final int column;
         private final QName actualElement;
+        private final QName actualAttribute;
         private final List<QName> expectedElements;
         private final List<String> schemaCodes;
 
@@ -398,6 +658,7 @@ final class DiagnosticMapper {
                 int line,
                 int column,
                 QName actualElement,
+                QName actualAttribute,
                 List<QName> expectedElements,
                 List<String> schemaCodes) {
             this.severity = severity;
@@ -407,6 +668,7 @@ final class DiagnosticMapper {
             this.line = line;
             this.column = column;
             this.actualElement = actualElement;
+            this.actualAttribute = actualAttribute;
             this.expectedElements = expectedElements;
             this.schemaCodes = schemaCodes;
         }
@@ -420,6 +682,7 @@ final class DiagnosticMapper {
                     line,
                     column,
                     actualElement,
+                    actualAttribute,
                     expectedElements,
                     schemaCodes);
         }
@@ -440,6 +703,24 @@ final class DiagnosticMapper {
                 rendered += ", and " + (total - preview.size()) + " more";
             }
             return preview.size() == 1 && total == 1 ? rendered : "one of " + rendered;
+        }
+    }
+
+    private record AllowedValues(List<String> preview, int total) {
+        private static final AllowedValues EMPTY = new AllowedValues(List.of(), 0);
+
+        private String description() {
+            if (preview.isEmpty()) {
+                return "one of the schema's allowed values";
+            }
+            String rendered = preview.stream()
+                    .map(value -> "‘" + value + "’")
+                    .reduce((left, right) -> left + ", " + right)
+                    .orElseThrow();
+            if (total > preview.size()) {
+                rendered += ", and " + (total - preview.size()) + " more";
+            }
+            return "one of " + rendered;
         }
     }
 }
