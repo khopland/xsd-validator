@@ -67,6 +67,24 @@ This library validates XML against XSD 1.0. Business rules, code-list rules,
 Schematron assertions, and requirements not expressed by the compiled XSD are
 outside its validation result.
 
+## Publishing
+
+Every push to `main` publishes the current `-SNAPSHOT` version to GitHub
+Packages after a successful build.
+
+Stable GitHub releases publish to Maven Central. Before the first release:
+
+1. Sign in to the [Central Portal](https://central.sonatype.com/) with GitHub
+   and verify the `io.github.khopland` namespace.
+2. Add a `maven-central` GitHub environment with the secrets
+   `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_TOKEN`,
+   `MAVEN_GPG_PRIVATE_KEY`, and `MAVEN_GPG_PASSPHRASE`.
+3. Publish the signing key's public key to a public keyserver.
+
+Create a non-prerelease GitHub release with a tag such as `v0.1.0`. The
+workflow uses the tag as the Maven version, signs the artifacts, and publishes
+them through the Central Portal.
+
 ## Stable issue codes
 
 | Family | Codes |
@@ -79,3 +97,7 @@ outside its validation result.
 | Identity constraints | `DUPLICATE_KEY`, `DUPLICATE_UNIQUE`, `KEY_REFERENCE_NOT_FOUND`, `KEY_VALUE_MISSING` |
 | Substitution and instance hints | `ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE`, `INVALID_XSI_TYPE`, `XSI_TYPE_NOT_FOUND`, `XSI_TYPE_NOT_DERIVED`, `XSI_NIL_NOT_ALLOWED`, `NILLED_ELEMENT_HAS_CONTENT`, `XSI_NIL_FIXED_VALUE_CONFLICT` |
 | Fallback | `SCHEMA_VALIDATION_ERROR` |
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
