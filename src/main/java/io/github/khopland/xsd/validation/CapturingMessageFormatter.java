@@ -3,6 +3,7 @@ package io.github.khopland.xsd.validation;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import org.apache.xerces.util.MessageFormatter;
+import org.jspecify.annotations.Nullable;
 
 final class CapturingMessageFormatter implements MessageFormatter {
     private final MessageFormatter delegate;
@@ -14,7 +15,10 @@ final class CapturingMessageFormatter implements MessageFormatter {
     }
 
     @Override
-    public String formatMessage(Locale locale, String key, Object[] arguments)
+    public String formatMessage(
+            @Nullable Locale locale,
+            String key,
+            @Nullable Object @Nullable [] arguments)
             throws MissingResourceException {
         collector.captureArguments(key, arguments);
         return delegate.formatMessage(locale, key, arguments);

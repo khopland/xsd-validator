@@ -20,6 +20,7 @@ import javax.xml.transform.Source;
 import javax.xml.validation.Schema;
 import org.apache.xerces.dom.DOMInputImpl;
 import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.ls.LSException;
@@ -35,7 +36,7 @@ final class XercesSchemaCompiler {
 
     static CompiledSchema compile(
             Source source,
-            LSResourceResolver resourceResolver)
+            @Nullable LSResourceResolver resourceResolver)
             throws SchemaCompilationException {
         SourceSnapshot snapshot = SourceSnapshot.read(source);
         Document document = parseForMetadata(snapshot);
@@ -141,20 +142,20 @@ final class XercesSchemaCompiler {
     }
 
     private static final class LocalSchemaResolver implements LSResourceResolver {
-        private final LSResourceResolver delegate;
+        private final @Nullable LSResourceResolver delegate;
         private final Map<String, byte[]> dependencies = new TreeMap<>();
 
-        private LocalSchemaResolver(LSResourceResolver delegate) {
+        private LocalSchemaResolver(@Nullable LSResourceResolver delegate) {
             this.delegate = delegate;
         }
 
         @Override
         public LSInput resolveResource(
-                String type,
-                String namespaceUri,
-                String publicId,
-                String systemId,
-                String baseUri) {
+                @Nullable String type,
+                @Nullable String namespaceUri,
+                @Nullable String publicId,
+                @Nullable String systemId,
+                @Nullable String baseUri) {
             try {
                 if (!XSD_NAMESPACE.equals(type)) {
                     throw new LSException(
@@ -201,12 +202,12 @@ final class XercesSchemaCompiler {
 
         private LSInput capture(
                 LSInput input,
-                String publicId,
-                String requestedSystemId,
-                String baseUri)
+                @Nullable String publicId,
+                @Nullable String requestedSystemId,
+                @Nullable String baseUri)
                 throws IOException {
             byte[] bytes;
-            String encoding = input.getEncoding();
+            @Nullable String encoding = input.getEncoding();
             var byteStream = input.getByteStream();
             if (byteStream != null) {
                 try (byteStream) {
@@ -249,10 +250,10 @@ final class XercesSchemaCompiler {
         }
 
         private static String resolvedSystemId(
-                String suppliedSystemId,
-                String requestedSystemId,
-                String baseUri) {
-            String systemId = suppliedSystemId == null
+                @Nullable String suppliedSystemId,
+                @Nullable String requestedSystemId,
+                @Nullable String baseUri) {
+            @Nullable String systemId = suppliedSystemId == null
                     ? requestedSystemId
                     : suppliedSystemId;
             if (systemId == null) {

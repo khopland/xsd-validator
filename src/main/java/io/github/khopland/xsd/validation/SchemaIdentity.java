@@ -1,6 +1,7 @@
 package io.github.khopland.xsd.validation;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Stable identity of the compiled root schema.
@@ -12,8 +13,8 @@ public record SchemaIdentity(String targetNamespace, String fingerprint) {
     /**
      * Normalizes a missing target namespace to an empty string.
      */
-    public SchemaIdentity {
-        targetNamespace = Objects.requireNonNullElse(targetNamespace, "");
-        Objects.requireNonNull(fingerprint, "fingerprint");
+    public SchemaIdentity(@Nullable String targetNamespace, String fingerprint) {
+        this.targetNamespace = Objects.requireNonNullElse(targetNamespace, "");
+        this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
     }
 }

@@ -24,6 +24,7 @@ import org.apache.xerces.xs.XSParticle;
 import org.apache.xerces.xs.XSTerm;
 import org.apache.xerces.xs.XSTypeDefinition;
 import org.apache.xerces.xs.XSWildcard;
+import org.jspecify.annotations.Nullable;
 
 final class ChoiceIndex {
     private final List<Choice> choices;
@@ -66,7 +67,7 @@ final class ChoiceIndex {
     }
 
     Optional<Match> match(
-            XSTypeDefinition parentType,
+            @Nullable XSTypeDefinition parentType,
             QName parentName,
             QName actualName,
             List<DocumentPathTracker.SeenElement> previousSiblings) {
@@ -106,7 +107,7 @@ final class ChoiceIndex {
     }
 
     Optional<IncompleteMatch> incomplete(
-            XSTypeDefinition parentType,
+            @Nullable XSTypeDefinition parentType,
             QName parentName,
             List<DocumentPathTracker.SeenElement> previousSiblings) {
         for (Choice choice : choices) {
@@ -130,7 +131,9 @@ final class ChoiceIndex {
         return Optional.empty();
     }
 
-    int maximumOccurrences(XSTypeDefinition parentType, QName elementName) {
+    int maximumOccurrences(
+            @Nullable XSTypeDefinition parentType,
+            @Nullable QName elementName) {
         if (!(parentType instanceof XSComplexTypeDefinition complexType)
                 || complexType.getParticle() == null) {
             return -1;
@@ -141,14 +144,14 @@ final class ChoiceIndex {
 
     private static boolean matchesParent(
             Choice choice,
-            XSTypeDefinition parentType,
+            @Nullable XSTypeDefinition parentType,
             QName parentName) {
         return parentType == null
                 ? choice.parentName().equals(parentName)
                 : choice.parentType() == parentType;
     }
 
-    private static XSModel model(Schema schema) {
+    private static @Nullable XSModel model(Schema schema) {
         Grammar[] grammars = ((XSGrammarPoolContainer) schema)
                 .getGrammarPool()
                 .retrieveInitialGrammarSet(XMLGrammarDescription.XML_SCHEMA);
@@ -272,7 +275,9 @@ final class ChoiceIndex {
         return List.copyOf(remaining);
     }
 
-    private static long maximumOccurrences(XSParticle particle, QName elementName) {
+    private static long maximumOccurrences(
+            XSParticle particle,
+            @Nullable QName elementName) {
         long termMaximum;
         XSTerm term = particle.getTerm();
         if (term instanceof XSElementDeclaration element) {
@@ -292,7 +297,9 @@ final class ChoiceIndex {
         return multiply(termMaximum, particle.getMaxOccurs());
     }
 
-    private static long maximumAcrossBranches(XSModelGroup group, QName elementName) {
+    private static long maximumAcrossBranches(
+            XSModelGroup group,
+            @Nullable QName elementName) {
         long maximum = 0;
         for (Object object : group.getParticles()) {
             long branchMaximum = maximumOccurrences((XSParticle) object, elementName);
@@ -304,7 +311,9 @@ final class ChoiceIndex {
         return maximum;
     }
 
-    private static long maximumAcrossSequence(XSModelGroup group, QName elementName) {
+    private static long maximumAcrossSequence(
+            XSModelGroup group,
+            @Nullable QName elementName) {
         long maximum = 0;
         for (Object object : group.getParticles()) {
             long childMaximum = maximumOccurrences((XSParticle) object, elementName);

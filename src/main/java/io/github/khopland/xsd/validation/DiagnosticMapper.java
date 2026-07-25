@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
+import org.jspecify.annotations.Nullable;
 
 final class DiagnosticMapper {
     private static final int MAX_EXPECTED_ELEMENTS = 5;
@@ -74,7 +75,7 @@ final class DiagnosticMapper {
             RawDiagnostic diagnostic,
             SchemaIdentity schema,
             ChoiceIndex choices,
-            QName actualAttribute) {
+            @Nullable QName actualAttribute) {
         if ("cvc-elt.1.a".equals(diagnostic.key())
                 && diagnostic.actualElement() != null
                 && choices.hasRootLocalName(diagnostic.actualElement().getLocalPart())
@@ -410,7 +411,7 @@ final class DiagnosticMapper {
 
     private static IssueBuilder facetIssue(
             RawDiagnostic diagnostic,
-            QName actualAttribute) {
+            @Nullable QName actualAttribute) {
         String subject = subject(diagnostic.actualElement(), actualAttribute);
         return switch (diagnostic.key()) {
             case "cvc-enumeration-valid" -> {
@@ -486,7 +487,7 @@ final class DiagnosticMapper {
 
     private static IssueBuilder boundIssue(
             RawDiagnostic diagnostic,
-            QName actualAttribute,
+            @Nullable QName actualAttribute,
             String subject,
             String comparison,
             String code) {
@@ -549,13 +550,15 @@ final class DiagnosticMapper {
                 || key.equals("cvc-complex-type.4_ns");
     }
 
-    private static QName attributeName(RawDiagnostic diagnostic) {
+    private static @Nullable QName attributeName(RawDiagnostic diagnostic) {
+        @Nullable Object lexicalArgument = diagnostic.arguments().length < 2
+                ? null
+                : diagnostic.arguments()[1];
         if (!isAttributeDiagnostic(diagnostic.key())
-                || diagnostic.arguments().length < 2
-                || diagnostic.arguments()[1] == null) {
+                || lexicalArgument == null) {
             return null;
         }
-        String lexicalName = diagnostic.arguments()[1].toString();
+        String lexicalName = lexicalArgument.toString();
         int separator = lexicalName.indexOf(':');
         String localName = separator < 0
                 ? lexicalName
@@ -569,15 +572,17 @@ final class DiagnosticMapper {
         if (present.isPresent()) {
             return present.get();
         }
+        @Nullable Object namespaceArgument = diagnostic.arguments().length > 2
+                ? diagnostic.arguments()[2]
+                : null;
         if ("cvc-complex-type.4_ns".equals(diagnostic.key())
-                && diagnostic.arguments().length > 2
-                && diagnostic.arguments()[2] != null) {
-            return new QName(diagnostic.arguments()[2].toString(), localName);
+                && namespaceArgument != null) {
+            return new QName(namespaceArgument.toString(), localName);
         }
         return new QName(localName);
     }
 
-    private static Optional<String> safeArgument(Object[] arguments, int index) {
+    private static Optional<String> safeArgument(@Nullable Object[] arguments, int index) {
         if (arguments.length <= index || arguments[index] == null) {
             return Optional.empty();
         }
@@ -587,7 +592,7 @@ final class DiagnosticMapper {
                 : Optional.empty();
     }
 
-    private static String schemaArgument(Object[] arguments, int index) {
+    private static String schemaArgument(@Nullable Object[] arguments, int index) {
         if (arguments.length <= index || arguments[index] == null) {
             return "the schema limit";
         }
@@ -598,7 +603,7 @@ final class DiagnosticMapper {
         return value.length() <= 80 ? value : value.substring(0, 80) + "…";
     }
 
-    private static AllowedValues allowedValues(Object[] arguments, int index) {
+    private static AllowedValues allowedValues(@Nullable Object[] arguments, int index) {
         if (arguments.length <= index || arguments[index] == null) {
             return AllowedValues.EMPTY;
         }
@@ -628,7 +633,7 @@ final class DiagnosticMapper {
                 : safe.substring(0, MAX_ENUM_VALUE_LENGTH) + "…";
     }
 
-    private static int integerArgument(Object[] arguments, int index) {
+    private static int integerArgument(@Nullable Object[] arguments, int index) {
         if (index < 0 || arguments.length <= index || arguments[index] == null) {
             return -1;
         }
@@ -643,7 +648,7 @@ final class DiagnosticMapper {
         return count > 1 ? count + " more occurrences of " : "";
     }
 
-    private static ExpectedElements expectedElements(Object[] arguments, int index) {
+    private static ExpectedElements expectedElements(@Nullable Object[] arguments, int index) {
         if (arguments.length <= index || arguments[index] == null) {
             return ExpectedElements.EMPTY;
         }
@@ -703,19 +708,19 @@ final class DiagnosticMapper {
                 .orElse("the alternative branch");
     }
 
-    private static String namespace(QName name) {
+    private static String namespace(@Nullable QName name) {
         return name == null ? "" : name.getNamespaceURI();
     }
 
-    private static String element(QName name) {
+    private static String element(@Nullable QName name) {
         return name == null ? "the current element" : "<" + name.getLocalPart() + ">";
     }
 
-    private static String attribute(QName name) {
+    private static String attribute(@Nullable QName name) {
         return name == null ? "the current attribute" : "@" + name.getLocalPart();
     }
 
-    private static String subject(QName element, QName attribute) {
+    private static String subject(@Nullable QName element, @Nullable QName attribute) {
         return attribute == null
                 ? "Element " + element(element)
                 : "Attribute " + attribute(attribute) + " on " + element(element);
@@ -742,7 +747,7 @@ final class DiagnosticMapper {
             String code,
             String message,
             List<QName> expectedElements,
-            QName actualAttribute) {
+            @Nullable QName actualAttribute) {
         return new IssueBuilder(
                 diagnostic.severity(),
                 code,
@@ -762,7 +767,7 @@ final class DiagnosticMapper {
             String code,
             int constraintArgument,
             String messagePrefix) {
-        String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
+        @Nullable String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
                 .orElse(null);
         String message = constraintName == null
                 ? messagePrefix + "."
@@ -779,9 +784,9 @@ final class DiagnosticMapper {
         private final String path;
         private final int line;
         private final int column;
-        private final QName actualElement;
-        private final QName actualAttribute;
-        private String constraintName;
+        private final @Nullable QName actualElement;
+        private final @Nullable QName actualAttribute;
+        private @Nullable String constraintName;
         private final List<QName> expectedElements;
         private final List<String> schemaCodes;
 
@@ -792,9 +797,9 @@ final class DiagnosticMapper {
                 String path,
                 int line,
                 int column,
-                QName actualElement,
-                QName actualAttribute,
-                String constraintName,
+                @Nullable QName actualElement,
+                @Nullable QName actualAttribute,
+                @Nullable String constraintName,
                 List<QName> expectedElements,
                 List<String> schemaCodes) {
             this.severity = severity;

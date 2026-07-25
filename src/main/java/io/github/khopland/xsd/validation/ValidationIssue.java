@@ -3,6 +3,7 @@ package io.github.khopland.xsd.validation;
 import java.util.List;
 import java.util.Objects;
 import javax.xml.namespace.QName;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A safe, structured validation diagnostic. Raw XML values are never retained.
@@ -28,9 +29,9 @@ public record ValidationIssue(
         String path,
         int line,
         int column,
-        QName actualElement,
-        QName actualAttribute,
-        String constraintName,
+        @Nullable QName actualElement,
+        @Nullable QName actualAttribute,
+        @Nullable String constraintName,
         List<QName> expectedElements,
         List<String> schemaCodes) {
 
