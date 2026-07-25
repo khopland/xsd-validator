@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.xml.namespace.QName;
 import javax.xml.transform.stream.StreamSource;
 import org.junit.jupiter.api.Test;
@@ -454,6 +456,36 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void reportsBooleanAndDateDatatypeFailuresWithoutRawValues() throws Exception {
+        BetterXsdValidator booleanValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="enabled" type="xs:boolean"/>
+                </xs:schema>
+                """);
+        BetterXsdValidator dateValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="created" type="xs:date"/>
+                </xs:schema>
+                """);
+
+        ValidationReport invalidBoolean =
+                booleanValidator.validate(xml("<enabled>private-boolean</enabled>"));
+        ValidationReport invalidDate =
+                dateValidator.validate(xml("<created>private-date</created>"));
+
+        assertThat(invalidBoolean.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("INVALID_VALUE");
+            assertThat(issue.message()).contains("boolean").doesNotContain("private-boolean");
+        });
+        assertThat(invalidDate.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("INVALID_VALUE");
+            assertThat(issue.message()).contains("date").doesNotContain("private-date");
+        });
+        assertThat(invalidBoolean.toString()).doesNotContain("private-boolean");
+        assertThat(invalidDate.toString()).doesNotContain("private-date");
+    }
+
+    @Test
     void reportsRequiredAndUnexpectedAttributesByQName() throws Exception {
         BetterXsdValidator requiredValidator = compile("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
@@ -528,6 +560,322 @@ class BetterXsdValidatorTest {
     }
 
     @Test
+    void groupsFixedAttributeEventsWithoutRetainingTheSubmittedValue() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:attribute name="status" type="xs:string" fixed="active"/>
+                  <xs:element name="person">
+                    <xs:complexType>
+                      <xs:attribute ref="status" fixed="active"/>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report =
+                validator.validate(xml("<person status=\"private-status\"/>"));
+
+        assertThat(report.rawEventCount()).isEqualTo(2);
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("ATTRIBUTE_FIXED_VALUE_MISMATCH");
+            assertThat(issue.actualAttribute()).isEqualTo(new QName("status"));
+            assertThat(issue.message())
+                    .contains("@status", "fixed value")
+                    .doesNotContain("private-status");
+            assertThat(issue.schemaCodes())
+                    .containsExactly("cvc-attribute.4", "cvc-complex-type.3.1");
+        });
+        assertThat(report.toString()).doesNotContain("private-status");
+    }
+
+    @Test
+    void reportsAProhibitedAttributeWithoutRetainingItsValue() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="person">
+                    <xs:complexType>
+                      <xs:attribute name="secret" use="prohibited"/>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report =
+                validator.validate(xml("<person secret=\"private-secret\"/>"));
+
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("ATTRIBUTE_NOT_ALLOWED");
+            assertThat(issue.actualAttribute()).isEqualTo(new QName("secret"));
+            assertThat(issue.message()).contains("@secret", "not allowed");
+        });
+        assertThat(report.toString()).doesNotContain("private-secret");
+    }
+
+    @Test
+    void reportsDuplicateKeysAndUniqueValuesByConstraintName() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="records">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="record" maxOccurs="unbounded">
+                          <xs:complexType>
+                            <xs:attribute name="id" use="required"/>
+                            <xs:attribute name="alias" use="required"/>
+                          </xs:complexType>
+                        </xs:element>
+                      </xs:sequence>
+                    </xs:complexType>
+                    <xs:key name="recordKey">
+                      <xs:selector xpath="record"/>
+                      <xs:field xpath="@id"/>
+                    </xs:key>
+                    <xs:unique name="recordAlias">
+                      <xs:selector xpath="record"/>
+                      <xs:field xpath="@alias"/>
+                    </xs:unique>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report = validator.validate(xml("""
+                <records>
+                  <record id="private-key" alias="private-alias"/>
+                  <record id="private-key" alias="private-alias"/>
+                </records>
+                """));
+
+        assertThat(report.issues())
+                .extracting(ValidationIssue::code)
+                .containsExactlyInAnyOrder("DUPLICATE_KEY", "DUPLICATE_UNIQUE");
+        assertThat(report.issues())
+                .extracting(ValidationIssue::constraintName)
+                .containsExactlyInAnyOrder("recordKey", "recordAlias");
+        assertThat(report.toString())
+                .doesNotContain("private-key", "private-alias");
+    }
+
+    @Test
+    void reportsAMissingKeyReferenceWithoutRetainingTheReferenceValue() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="records">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="record" minOccurs="0" maxOccurs="unbounded">
+                          <xs:complexType>
+                            <xs:attribute name="id" use="required"/>
+                          </xs:complexType>
+                        </xs:element>
+                        <xs:element name="reference" minOccurs="0" maxOccurs="unbounded">
+                          <xs:complexType>
+                            <xs:attribute name="id" use="required"/>
+                          </xs:complexType>
+                        </xs:element>
+                      </xs:sequence>
+                    </xs:complexType>
+                    <xs:key name="recordKey">
+                      <xs:selector xpath="record"/>
+                      <xs:field xpath="@id"/>
+                    </xs:key>
+                    <xs:keyref name="recordReference" refer="recordKey">
+                      <xs:selector xpath="reference"/>
+                      <xs:field xpath="@id"/>
+                    </xs:keyref>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report = validator.validate(xml("""
+                <records>
+                  <record id="known"/>
+                  <reference id="private-reference"/>
+                </records>
+                """));
+
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("KEY_REFERENCE_NOT_FOUND");
+            assertThat(issue.constraintName()).isEqualTo("recordReference");
+            assertThat(issue.schemaCodes()).containsExactly("KeyNotFound");
+            assertThat(issue.message())
+                    .contains("recordReference")
+                    .doesNotContain("private-reference");
+        });
+        assertThat(report.toString()).doesNotContain("private-reference");
+    }
+
+    @Test
+    void reportsAKeyWithNoSelectedFieldValue() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="records">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="record">
+                          <xs:complexType>
+                            <xs:attribute name="id"/>
+                          </xs:complexType>
+                        </xs:element>
+                      </xs:sequence>
+                    </xs:complexType>
+                    <xs:key name="recordKey">
+                      <xs:selector xpath="record"/>
+                      <xs:field xpath="@id"/>
+                    </xs:key>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue =
+                validator.validate(xml("<records><record/></records>")).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("KEY_VALUE_MISSING");
+        assertThat(issue.constraintName()).isEqualTo("recordKey");
+        assertThat(issue.schemaCodes()).containsExactly("AbsentKeyValue");
+    }
+
+    @Test
+    void reportsUnresolvableXsiTypeWithoutRetainingItsQName() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value" type="xs:string"/>
+                </xs:schema>
+                """);
+
+        ValidationReport report = validator.validate(xml("""
+                <value xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xmlns:private="urn:private"
+                       xsi:type="private:PrivateType"/>
+                """));
+
+        assertThat(report.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.code()).isEqualTo("XSI_TYPE_NOT_FOUND");
+            assertThat(issue.actualAttribute())
+                    .isEqualTo(new QName(
+                            "http://www.w3.org/2001/XMLSchema-instance",
+                            "type",
+                            "xsi"));
+            assertThat(issue.message()).contains("@xsi:type").doesNotContain("PrivateType");
+        });
+        assertThat(report.toString()).doesNotContain("PrivateType", "urn:private");
+    }
+
+    @Test
+    void reportsInvalidNilUsageByTheXsiAttributeQName() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value" type="xs:string"/>
+                </xs:schema>
+                """);
+
+        ValidationIssue issue = validator.validate(xml("""
+                <value xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:nil="true"/>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("XSI_NIL_NOT_ALLOWED");
+        assertThat(issue.actualAttribute())
+                .isEqualTo(new QName(
+                        "http://www.w3.org/2001/XMLSchema-instance",
+                        "nil",
+                        "xsi"));
+        assertThat(issue.message()).contains("not nillable", "@xsi:nil");
+    }
+
+    @Test
+    void acceptsSubstitutionMembersAndExplainsAnAbstractHead() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="entry" abstract="true"/>
+                  <xs:element name="textEntry" substitutionGroup="entry" type="xs:string"/>
+                  <xs:element name="records">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element ref="entry"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        assertThat(validator.validate(xml("""
+                <records><textEntry>ok</textEntry></records>
+                """)).valid()).isTrue();
+
+        ValidationIssue issue = validator.validate(xml("""
+                <records><entry/></records>
+                """)).issues().get(0);
+
+        assertThat(issue.code()).isEqualTo("ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE");
+        assertThat(issue.actualElement()).isEqualTo(new QName("entry"));
+        assertThat(issue.message()).contains("substitution-group member");
+    }
+
+    @Test
+    void exposesSkippedAndLaxWildcardContentInCoverage() throws Exception {
+        BetterXsdValidator skipValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:any processContents="skip"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        BetterXsdValidator laxValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:any processContents="lax"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport skipped =
+                skipValidator.validate(xml("<root><unknown>private</unknown></root>"));
+        ValidationReport lax =
+                laxValidator.validate(xml("<root><unknown>private</unknown></root>"));
+
+        assertThat(skipped.valid()).isTrue();
+        assertThat(skipped.coverage().skippedOrLaxContent()).isTrue();
+        assertThat(lax.valid()).isTrue();
+        assertThat(lax.coverage().skippedOrLaxContent()).isTrue();
+        assertThat(skipped.toString()).doesNotContain("private");
+        assertThat(lax.toString()).doesNotContain("private");
+    }
+
+    @Test
+    void doesNotMistakeStrictlyValidatedContentForWildcardCoverage() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="child" type="xs:string"/>
+                  <xs:element name="root">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:any processContents="strict"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+
+        ValidationReport report =
+                validator.validate(xml("<root><child>ok</child></root>"));
+        ValidationReport invalid =
+                validator.validate(xml("<root><unknown/></root>"));
+
+        assertThat(report.valid()).isTrue();
+        assertThat(report.coverage().skippedOrLaxContent()).isFalse();
+        assertThat(invalid.valid()).isFalse();
+        assertThat(invalid.coverage().skippedOrLaxContent()).isFalse();
+    }
+
+    @Test
     void returnsEveryRecoverableErrorInDocumentOrder() throws Exception {
         BetterXsdValidator validator = compile("""
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -570,16 +918,87 @@ class BetterXsdValidatorTest {
                   </xs:element>
                 </xs:schema>
                 """);
-        String items = "<item>private-value</item>".repeat(101);
+        String items = "<item>private-value</item>".repeat(501);
 
         ValidationReport report =
                 validator.validate(xml("<values>" + items + "</values>"));
 
-        assertThat(report.rawEventCount()).isEqualTo(202);
+        assertThat(report.rawEventCount()).isEqualTo(1_002);
         assertThat(report.issues()).hasSize(100);
         assertThat(report.valid()).isFalse();
         assertThat(report.coverage().issuesTruncated()).isTrue();
         assertThat(report.toString()).doesNotContain("private-value");
+    }
+
+    @Test
+    void validatesConcurrentlyWithIsolatedSessions() throws Exception {
+        BetterXsdValidator validator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="number" type="xs:int"/>
+                </xs:schema>
+                """);
+        var executor = Executors.newFixedThreadPool(4);
+        try {
+            var tasks = java.util.stream.IntStream.range(0, 40)
+                    .mapToObj(index -> (java.util.concurrent.Callable<ValidationReport>) () ->
+                            validator.validate(xml(index % 2 == 0
+                                    ? "<number>42</number>"
+                                    : "<number>private-" + index + "</number>")))
+                    .toList();
+
+            var reports = executor.invokeAll(tasks).stream()
+                    .map(future -> {
+                        try {
+                            return future.get();
+                        } catch (Exception exception) {
+                            throw new AssertionError(exception);
+                        }
+                    })
+                    .toList();
+
+            assertThat(reports).hasSize(40);
+            assertThat(reports).filteredOn(ValidationReport::valid).hasSize(20);
+            assertThat(reports).filteredOn(report -> !report.valid()).allSatisfy(report -> {
+                assertThat(report.issues()).hasSize(1);
+                assertThat(report.issues().get(0).code()).isEqualTo("INVALID_VALUE");
+                assertThat(report.toString()).doesNotContain("private-");
+            });
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void validatesLargeAndDeepDocuments() throws Exception {
+        BetterXsdValidator largeValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="items">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="item" type="xs:int"
+                                    minOccurs="0" maxOccurs="unbounded"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        BetterXsdValidator deepValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="node">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element ref="node" minOccurs="0"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """);
+        String largeXml = "<items>" + "<item>1</item>".repeat(10_000) + "</items>";
+        String deepXml = "<node>".repeat(300) + "</node>".repeat(300);
+
+        assertThat(largeValidator.validate(xml(largeXml)).valid()).isTrue();
+        assertThat(deepValidator.validate(xml(deepXml)).valid()).isTrue();
     }
 
     @Test

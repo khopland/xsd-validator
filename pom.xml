@@ -5,13 +5,16 @@
 
   <groupId>io.github.khopland.xsd.validation</groupId>
   <artifactId>xsd-validator</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1.0-SNAPSHOT</version>
 
   <name>xsd-validator</name>
+  <description>Safe, structured, choice-aware XSD 1.0 validation</description>
+  <url>https://github.com/khopland/xsd-validator</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>17</maven.compiler.release>
+    <project.build.outputTimestamp>2026-07-25T00:00:00Z</project.build.outputTimestamp>
   </properties>
 
   <dependencyManagement>
@@ -71,6 +74,14 @@
           <version>3.5.1</version>
         </plugin>
         <plugin>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>3.4.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>3.12.0</version>
+        </plugin>
+        <plugin>
           <artifactId>maven-install-plugin</artifactId>
           <version>3.1.4</version>
         </plugin>
@@ -89,5 +100,33 @@
         </plugin>
       </plugins>
     </pluginManagement>
+    <plugins>
+      <plugin>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <excludePackageNames>io.github.khopland.xsd.validation.internal</excludePackageNames>
+          <notimestamp>true</notimestamp>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
 </project>

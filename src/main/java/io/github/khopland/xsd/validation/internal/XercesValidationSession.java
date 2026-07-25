@@ -15,10 +15,10 @@ import org.apache.xerces.impl.XMLErrorReporter;
 import org.apache.xerces.impl.xs.XSMessageFormatter;
 import org.apache.xerces.jaxp.SAXParserFactoryImpl;
 import org.apache.xerces.util.MessageFormatter;
+import org.apache.xerces.xs.PSVIProvider;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
-import org.xml.sax.helpers.DefaultHandler;
 
 public final class XercesValidationSession {
     private static final String ERROR_HANDLER =
@@ -34,8 +34,10 @@ public final class XercesValidationSession {
             XercesSchemaCompiler.CompiledSchema compiledSchema,
             Source source) {
         ValidatorHandler validator = compiledSchema.schema().newValidatorHandler();
-        validator.setContentHandler(new DefaultHandler());
         DocumentPathTracker pathTracker = new DocumentPathTracker(validator);
+        ValidationCoverageTracker coverageTracker =
+                new ValidationCoverageTracker((PSVIProvider) validator, pathTracker);
+        validator.setContentHandler(coverageTracker);
         DiagnosticCollector collector = new DiagnosticCollector(pathTracker);
         boolean complete = true;
 
@@ -68,7 +70,10 @@ public final class XercesValidationSession {
                 collector.rawEventCount(),
                 issues,
                 compiledSchema.identity(),
-                new ValidationCoverage(complete, truncated, false));
+                new ValidationCoverage(
+                        complete,
+                        truncated,
+                        coverageTracker.skippedOrLaxContent(collector.diagnostics())));
     }
 
     private static void configureStructuredErrors(

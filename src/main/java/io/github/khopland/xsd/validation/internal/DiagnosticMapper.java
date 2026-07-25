@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
 
 final class DiagnosticMapper {
@@ -15,6 +16,14 @@ final class DiagnosticMapper {
     private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[\\p{Alnum}_.:-]{1,100}");
     private static final Pattern QUALIFIED_ELEMENT =
             Pattern.compile("^\"([^\"]*)\":([\\p{Alnum}_.-]+)$");
+    private static final QName XSI_TYPE = new QName(
+            XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI,
+            "type",
+            "xsi");
+    private static final QName XSI_NIL = new QName(
+            XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI,
+            "nil",
+            "xsi");
 
     private DiagnosticMapper() {
     }
@@ -34,6 +43,15 @@ final class DiagnosticMapper {
                         : null;
                 IssueBuilder issue = mapOne(diagnostic, schema, choices, attribute);
                 issue.schemaCodes.add(companion.key());
+                issues.add(issue);
+            } else if (index + 1 < diagnostics.size()
+                    && isFixedAttributeCompanion(diagnostic, diagnostics.get(index + 1))) {
+                IssueBuilder issue = mapOne(
+                        diagnostic,
+                        schema,
+                        choices,
+                        attributeName(diagnostic));
+                issue.schemaCodes.add(diagnostics.get(++index).key());
                 issues.add(issue);
             } else {
                 issues.add(mapOne(
@@ -101,6 +119,123 @@ final class DiagnosticMapper {
                             + " does not satisfy type '" + typeName + "'.",
                     List.of(),
                     actualAttribute);
+        }
+
+        if ("cvc-attribute.4".equals(diagnostic.key())
+                || "cvc-complex-type.3.1".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "ATTRIBUTE_FIXED_VALUE_MISMATCH",
+                    "Attribute " + attribute(actualAttribute)
+                            + " on " + element(diagnostic.actualElement())
+                            + " must use its schema-defined fixed value.",
+                    List.of(),
+                    actualAttribute);
+        }
+
+        if ("DuplicateKey".equals(diagnostic.key())) {
+            return identityIssue(
+                    diagnostic,
+                    "DUPLICATE_KEY",
+                    2,
+                    element(diagnostic.actualElement())
+                            + " duplicates a key required to be unique by identity constraint");
+        }
+
+        if ("DuplicateUnique".equals(diagnostic.key())) {
+            return identityIssue(
+                    diagnostic,
+                    "DUPLICATE_UNIQUE",
+                    2,
+                    element(diagnostic.actualElement())
+                            + " duplicates a value required to be unique by identity constraint");
+        }
+
+        if ("KeyNotFound".equals(diagnostic.key())) {
+            return identityIssue(
+                    diagnostic,
+                    "KEY_REFERENCE_NOT_FOUND",
+                    0,
+                    element(diagnostic.actualElement())
+                            + " contains a reference not found by identity constraint");
+        }
+
+        if ("AbsentKeyValue".equals(diagnostic.key())
+                || "KeyNotEnoughValues".equals(diagnostic.key())) {
+            return identityIssue(
+                    diagnostic,
+                    "KEY_VALUE_MISSING",
+                    1,
+                    element(diagnostic.actualElement())
+                            + " is missing a value required by identity constraint");
+        }
+
+        if ("cvc-elt.2".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE",
+                    "Abstract element " + element(diagnostic.actualElement())
+                            + " must be replaced by a permitted substitution-group member.");
+        }
+
+        if ("cvc-elt.4.1".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "INVALID_XSI_TYPE",
+                    "Attribute @xsi:type on " + element(diagnostic.actualElement())
+                            + " must contain a valid QName.",
+                    List.of(),
+                    XSI_TYPE);
+        }
+
+        if ("cvc-elt.4.2".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "XSI_TYPE_NOT_FOUND",
+                    "The schema cannot resolve @xsi:type on "
+                            + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    XSI_TYPE);
+        }
+
+        if ("cvc-elt.4.3".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "XSI_TYPE_NOT_DERIVED",
+                    "The type selected by @xsi:type is not permitted for "
+                            + element(diagnostic.actualElement()) + ".",
+                    List.of(),
+                    XSI_TYPE);
+        }
+
+        if ("cvc-elt.3.1".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "XSI_NIL_NOT_ALLOWED",
+                    "Element " + element(diagnostic.actualElement())
+                            + " is not nillable, so @xsi:nil is not allowed.",
+                    List.of(),
+                    XSI_NIL);
+        }
+
+        if ("cvc-elt.3.2.1".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "NILLED_ELEMENT_HAS_CONTENT",
+                    "Element " + element(diagnostic.actualElement())
+                            + " cannot contain content when @xsi:nil is true.",
+                    List.of(),
+                    XSI_NIL);
+        }
+
+        if ("cvc-elt.3.2.2".equals(diagnostic.key())) {
+            return issue(
+                    diagnostic,
+                    "XSI_NIL_FIXED_VALUE_CONFLICT",
+                    "Element " + element(diagnostic.actualElement())
+                            + " has a fixed value and cannot use @xsi:nil.",
+                    List.of(),
+                    XSI_NIL);
         }
 
         Optional<ChoiceIndex.Match> choice = choiceMatch(diagnostic, choices);
@@ -396,6 +531,18 @@ final class DiagnosticMapper {
                 && specific.line() == companion.line();
     }
 
+    private static boolean isFixedAttributeCompanion(
+            RawDiagnostic specific,
+            RawDiagnostic companion) {
+        return "cvc-attribute.4".equals(specific.key())
+                && "cvc-complex-type.3.1".equals(companion.key())
+                && specific.path().equals(companion.path())
+                && specific.line() == companion.line()
+                && java.util.Objects.equals(
+                        attributeName(specific),
+                        attributeName(companion));
+    }
+
     private static boolean isValueDiagnostic(String key) {
         return key.startsWith("cvc-datatype-valid") || isFacetDiagnostic(key);
     }
@@ -634,8 +781,24 @@ final class DiagnosticMapper {
                 diagnostic.column(),
                 diagnostic.actualElement(),
                 actualAttribute,
+                null,
                 expectedElements,
                 new ArrayList<>(List.of(diagnostic.key())));
+    }
+
+    private static IssueBuilder identityIssue(
+            RawDiagnostic diagnostic,
+            String code,
+            int constraintArgument,
+            String messagePrefix) {
+        String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
+                .orElse(null);
+        String message = constraintName == null
+                ? messagePrefix + "."
+                : messagePrefix + " '" + constraintName + "'.";
+        IssueBuilder issue = issue(diagnostic, code, message);
+        issue.constraintName = constraintName;
+        return issue;
     }
 
     private static final class IssueBuilder {
@@ -647,6 +810,7 @@ final class DiagnosticMapper {
         private final int column;
         private final QName actualElement;
         private final QName actualAttribute;
+        private String constraintName;
         private final List<QName> expectedElements;
         private final List<String> schemaCodes;
 
@@ -659,6 +823,7 @@ final class DiagnosticMapper {
                 int column,
                 QName actualElement,
                 QName actualAttribute,
+                String constraintName,
                 List<QName> expectedElements,
                 List<String> schemaCodes) {
             this.severity = severity;
@@ -669,6 +834,7 @@ final class DiagnosticMapper {
             this.column = column;
             this.actualElement = actualElement;
             this.actualAttribute = actualAttribute;
+            this.constraintName = constraintName;
             this.expectedElements = expectedElements;
             this.schemaCodes = schemaCodes;
         }
@@ -683,6 +849,7 @@ final class DiagnosticMapper {
                     column,
                     actualElement,
                     actualAttribute,
+                    constraintName,
                     expectedElements,
                     schemaCodes);
         }
