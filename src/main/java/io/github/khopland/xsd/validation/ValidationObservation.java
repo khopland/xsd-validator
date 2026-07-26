@@ -437,7 +437,7 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
                 String localName,
                 String qName,
                 Attributes attributes) {
-            ElementPSVI psvi = psviProvider.getElementPSVI();
+            @Nullable ElementPSVI psvi = psviProvider.getElementPSVI();
             if (!path.isEmpty()) {
                 path.peekLast().schemaType =
                         psvi == null ? null : psvi.getTypeDefinition();
@@ -447,7 +447,7 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
 
         @Override
         public void endElement(String uri, String localName, String qName) {
-            ElementPSVI psvi = psviProvider.getElementPSVI();
+            @Nullable ElementPSVI psvi = psviProvider.getElementPSVI();
             if (!skippedOrLaxContent
                     && depth > 1
                     && psvi != null
