@@ -1,5 +1,7 @@
 package io.github.khopland.xsd.validation;
 
+import static io.github.khopland.xsd.validation.TestSources.compile;
+import static io.github.khopland.xsd.validation.TestSources.xml;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
@@ -337,12 +339,4 @@ class SchemaCompilationTest {
         assertThat(report.complete()).isTrue();
     }
 
-    private static BetterXsdValidator compile(String schema)
-            throws SchemaCompilationException {
-        return BetterXsdValidator.compile(new StreamSource(new StringReader(schema)));
-    }
-
-    private static StreamSource xml(String xml) {
-        return new StreamSource(new StringReader(xml));
-    }
 }

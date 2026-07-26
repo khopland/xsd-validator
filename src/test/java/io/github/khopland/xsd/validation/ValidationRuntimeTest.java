@@ -1,13 +1,13 @@
 package io.github.khopland.xsd.validation;
 
+import static io.github.khopland.xsd.validation.TestSources.compile;
+import static io.github.khopland.xsd.validation.TestSources.xml;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-import java.io.StringReader;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.xml.transform.stream.StreamSource;
 import org.junit.jupiter.api.Test;
 
 class ValidationRuntimeTest {
@@ -324,12 +324,4 @@ class ValidationRuntimeTest {
         assertThat(report.toString()).doesNotContain("must-not-appear");
     }
 
-    private static BetterXsdValidator compile(String schema)
-            throws SchemaCompilationException {
-        return BetterXsdValidator.compile(new StreamSource(new StringReader(schema)));
-    }
-
-    private static StreamSource xml(String xml) {
-        return new StreamSource(new StringReader(xml));
-    }
 }
