@@ -153,6 +153,10 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         return reader;
     }
 
+    /**
+     * Returns a secured reader. A reader supplied by a SAXSource must be Xerces-backed and
+     * is configured in place.
+     */
     private static XMLReader xmlReader(
             Source source,
             ValidationObservation observation)
@@ -165,6 +169,10 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         return newSecureReader(observation);
     }
 
+    /**
+     * Mutates a Xerces-backed reader with the required SAX and Xerces security settings,
+     * validation error handler, and entity resolver.
+     */
     private static void configureSecureReader(
             XMLReader reader,
             ValidationObservation observation)

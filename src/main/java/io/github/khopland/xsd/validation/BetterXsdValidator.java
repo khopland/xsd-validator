@@ -67,6 +67,12 @@ public final class BetterXsdValidator {
     /**
      * Validates one XML document in an isolated session.
      *
+     * <p>{@link javax.xml.transform.stream.StreamSource StreamSource} and
+     * {@link javax.xml.transform.sax.SAXSource SAXSource} are supported. A SAXSource that
+     * supplies an {@link org.xml.sax.XMLReader XMLReader} must use a Xerces-backed reader.
+     * The supplied reader is configured in place with the required SAX and Xerces-specific
+     * security settings, validation error handler, and entity resolver.
+     *
      * @param xmlSource XML content
      * @return the immutable validation report
      */

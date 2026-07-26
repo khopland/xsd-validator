@@ -1,5 +1,6 @@
 package io.github.khopland.xsd.validation;
 
+import static io.github.khopland.xsd.validation.TestSources.CHOICE_SCHEMA;
 import static io.github.khopland.xsd.validation.TestSources.compile;
 import static io.github.khopland.xsd.validation.TestSources.xml;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,25 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ChoiceAndContentDiagnosticsTest {
-    private static final String CHOICE_SCHEMA = """
-            <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                       targetNamespace="urn:contact"
-                       xmlns="urn:contact"
-                       elementFormDefault="qualified">
-              <xs:element name="contact">
-                <xs:complexType>
-                  <xs:choice minOccurs="0">
-                    <xs:sequence>
-                      <xs:element name="postalAddress" type="xs:string"/>
-                      <xs:element name="postalCode" type="xs:string"/>
-                    </xs:sequence>
-                    <xs:element name="sms" type="xs:string"/>
-                  </xs:choice>
-                </xs:complexType>
-              </xs:element>
-            </xs:schema>
-            """;
-
     @Test
     void validatesAnOptionalChoiceWhenNeitherBranchIsPresent() throws Exception {
         BetterXsdValidator validator = compile(CHOICE_SCHEMA);
