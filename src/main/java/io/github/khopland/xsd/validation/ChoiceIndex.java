@@ -47,7 +47,7 @@ final class ChoiceIndex {
     Optional<Match> match(
             QName parentName,
             QName actualName,
-            List<DocumentPathTracker.SeenElement> previousSiblings) {
+            List<QName> previousSiblings) {
         return match(null, parentName, actualName, previousSiblings);
     }
 
@@ -55,7 +55,7 @@ final class ChoiceIndex {
             @Nullable XSTypeDefinition parentType,
             QName parentName,
             QName actualName,
-            List<DocumentPathTracker.SeenElement> previousSiblings) {
+            List<QName> previousSiblings) {
         for (Choice choice : choices) {
             if (!matchesParent(choice, parentType, parentName)) {
                 continue;
@@ -73,8 +73,8 @@ final class ChoiceIndex {
                 continue;
             }
             Branch selected = candidates.get(0);
-            DocumentPathTracker.SeenElement selectedBy = previousSiblings.stream()
-                    .filter(sibling -> selected.contains(sibling.name()))
+            QName selectedBy = previousSiblings.stream()
+                    .filter(selected::contains)
                     .findFirst()
                     .orElseThrow();
             return Optional.of(new Match(
@@ -87,14 +87,14 @@ final class ChoiceIndex {
 
     Optional<IncompleteMatch> incomplete(
             QName parentName,
-            List<DocumentPathTracker.SeenElement> previousSiblings) {
+            List<QName> previousSiblings) {
         return incomplete(null, parentName, previousSiblings);
     }
 
     Optional<IncompleteMatch> incomplete(
             @Nullable XSTypeDefinition parentType,
             QName parentName,
-            List<DocumentPathTracker.SeenElement> previousSiblings) {
+            List<QName> previousSiblings) {
         for (Choice choice : choices) {
             if (!matchesParent(choice, parentType, parentName)) {
                 continue;
@@ -106,8 +106,8 @@ final class ChoiceIndex {
             Branch selected = candidates.get(0);
             List<QName> remaining = remaining(selected, previousSiblings);
             if (!remaining.isEmpty()) {
-                DocumentPathTracker.SeenElement selectedBy = previousSiblings.stream()
-                        .filter(sibling -> selected.contains(sibling.name()))
+                QName selectedBy = previousSiblings.stream()
+                        .filter(selected::contains)
                         .findFirst()
                         .orElseThrow();
                 return Optional.of(new IncompleteMatch(selectedBy, remaining));
@@ -230,13 +230,13 @@ final class ChoiceIndex {
 
     private static List<Branch> compatibleBranches(
             Choice choice,
-            List<DocumentPathTracker.SeenElement> siblings) {
+            List<QName> siblings) {
         List<Branch> candidates = choice.branches();
-        for (DocumentPathTracker.SeenElement sibling : siblings) {
+        for (QName sibling : siblings) {
             List<Branch> containing =
-                    branchesContaining(choice.branches(), sibling.name());
+                    branchesContaining(choice.branches(), sibling);
             if (!containing.isEmpty()) {
-                candidates = branchesContaining(candidates, sibling.name());
+                candidates = branchesContaining(candidates, sibling);
             }
         }
         return candidates;
@@ -252,10 +252,10 @@ final class ChoiceIndex {
 
     private static List<QName> remaining(
             Branch branch,
-            List<DocumentPathTracker.SeenElement> siblings) {
+            List<QName> siblings) {
         List<QName> remaining = new ArrayList<>(branch.requiredNames());
-        for (DocumentPathTracker.SeenElement sibling : siblings) {
-            remaining.remove(sibling.name());
+        for (QName sibling : siblings) {
+            remaining.remove(sibling);
         }
         return List.copyOf(remaining);
     }
@@ -362,13 +362,13 @@ final class ChoiceIndex {
     }
 
     record Match(
-            DocumentPathTracker.SeenElement selectedBy,
+            QName selectedBy,
             List<QName> remainingElements,
             List<QName> attemptedBranch) {
     }
 
     record IncompleteMatch(
-            DocumentPathTracker.SeenElement selectedBy,
+            QName selectedBy,
             List<QName> remainingElements) {
     }
 }
