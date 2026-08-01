@@ -1,5 +1,10 @@
 package io.github.khopland.xsd.validation;
 
+import static io.github.khopland.xsd.validation.DiagnosticMappingSupport.element;
+import static io.github.khopland.xsd.validation.DiagnosticMappingSupport.isSafeName;
+import static io.github.khopland.xsd.validation.DiagnosticMappingSupport.issue;
+import static io.github.khopland.xsd.validation.DiagnosticMappingSupport.safeNameArgument;
+
 import io.github.khopland.xsd.validation.ValidationObservation.RawDiagnostic;
 import io.github.khopland.xsd.validation.ValidationObservation.SeenElement;
 import org.jspecify.annotations.Nullable;
@@ -16,7 +21,6 @@ final class DiagnosticMapper {
     private static final int MAX_EXPECTED_ELEMENTS = 5;
     private static final int MAX_ENUM_VALUES = 5;
     private static final int MAX_ENUM_VALUE_LENGTH = 40;
-    private static final Pattern SAFE_TYPE_NAME = Pattern.compile("[\\p{Alnum}_.:-]{1,100}");
     private static final Pattern QUALIFIED_ELEMENT =
             Pattern.compile("^\"([^\"]*)\":([\\p{Alnum}_.-]+)$");
     private static final QName XSI_TYPE = new QName(
@@ -35,7 +39,7 @@ final class DiagnosticMapper {
             List<RawDiagnostic> diagnostics,
             SchemaIdentity schema,
             ChoiceIndex choices) {
-        List<IssueBuilder> issues = new ArrayList<>();
+        List<DiagnosticIssueBuilder> issues = new ArrayList<>();
         for (int index = 0; index < diagnostics.size(); index++) {
             RawDiagnostic diagnostic = diagnostics.get(index);
             try {
@@ -45,17 +49,18 @@ final class DiagnosticMapper {
                     QName attribute = "cvc-attribute.3".equals(companion.key())
                             ? attributeName(companion)
                             : null;
-                    IssueBuilder issue = mapOne(diagnostic, schema, choices, attribute);
-                    issue.schemaCodes.add(companion.key());
+                    DiagnosticIssueBuilder issue =
+                            mapOne(diagnostic, schema, choices, attribute);
+                    issue.addSchemaCode(companion.key());
                     issues.add(issue);
                 } else if (index + 1 < diagnostics.size()
                         && isFixedAttributeCompanion(diagnostic, diagnostics.get(index + 1))) {
-                    IssueBuilder issue = mapOne(
+                    DiagnosticIssueBuilder issue = mapOne(
                             diagnostic,
                             schema,
                             choices,
                             attributeName(diagnostic));
-                    issue.schemaCodes.add(diagnostics.get(++index).key());
+                    issue.addSchemaCode(diagnostics.get(++index).key());
                     issues.add(issue);
                 } else {
                     issues.add(mapOne(
@@ -71,10 +76,10 @@ final class DiagnosticMapper {
                         "XML does not satisfy schema constraint '" + diagnostic.key() + "'."));
             }
         }
-        return issues.stream().map(IssueBuilder::build).toList();
+        return issues.stream().map(DiagnosticIssueBuilder::build).toList();
     }
 
-    private static IssueBuilder mapOne(
+    private static DiagnosticIssueBuilder mapOne(
             RawDiagnostic diagnostic,
             SchemaIdentity schema,
             ChoiceIndex choices,
@@ -129,6 +134,11 @@ final class DiagnosticMapper {
                     expectedPreview);
         }
 
+        @Nullable DiagnosticIssueBuilder identity = IdentityDiagnosticMapper.map(diagnostic);
+        if (identity != null) {
+            return identity;
+        }
+
         String key = diagnostic.key();
         return switch (key) {
             case "cvc-elt.1.a" -> issue(
@@ -155,7 +165,7 @@ final class DiagnosticMapper {
                     List.of(),
                     actualAttribute);
             case "cvc-attribute.3" -> {
-                String typeName = safeArgument(diagnostic.arguments(), 3)
+                String typeName = safeNameArgument(diagnostic.arguments(), 3)
                         .orElse("the declared type");
                 yield issue(
                         diagnostic,
@@ -174,30 +184,6 @@ final class DiagnosticMapper {
                             + " must use its schema-defined fixed value.",
                     List.of(),
                     actualAttribute);
-            case "DuplicateKey" -> identityIssue(
-                    diagnostic,
-                    "DUPLICATE_KEY",
-                    2,
-                    element(diagnostic.actualElement())
-                            + " duplicates a key required to be unique by identity constraint");
-            case "DuplicateUnique" -> identityIssue(
-                    diagnostic,
-                    "DUPLICATE_UNIQUE",
-                    2,
-                    element(diagnostic.actualElement())
-                            + " duplicates a value required to be unique by identity constraint");
-            case "KeyNotFound" -> identityIssue(
-                    diagnostic,
-                    "KEY_REFERENCE_NOT_FOUND",
-                    0,
-                    element(diagnostic.actualElement())
-                            + " contains a reference not found by identity constraint");
-            case "AbsentKeyValue", "KeyNotEnoughValues" -> identityIssue(
-                    diagnostic,
-                    "KEY_VALUE_MISSING",
-                    1,
-                    element(diagnostic.actualElement())
-                            + " is missing a value required by identity constraint");
             case "cvc-elt.2" -> issue(
                     diagnostic,
                     "ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE",
@@ -346,7 +332,7 @@ final class DiagnosticMapper {
             }
             default -> {
                 if (key.startsWith("cvc-datatype-valid")) {
-                    String typeName = safeArgument(diagnostic.arguments(), 1)
+                    String typeName = safeNameArgument(diagnostic.arguments(), 1)
                             .orElse("the declared type");
                     String message = subject(diagnostic.actualElement(), actualAttribute)
                             + " does not satisfy type '" + typeName + "'.";
@@ -412,7 +398,7 @@ final class DiagnosticMapper {
         });
     }
 
-    private static IssueBuilder facetIssue(
+    private static DiagnosticIssueBuilder facetIssue(
             RawDiagnostic diagnostic,
             @Nullable QName actualAttribute) {
         String subject = subject(diagnostic.actualElement(), actualAttribute);
@@ -488,7 +474,7 @@ final class DiagnosticMapper {
         };
     }
 
-    private static IssueBuilder boundIssue(
+    private static DiagnosticIssueBuilder boundIssue(
             RawDiagnostic diagnostic,
             @Nullable QName actualAttribute,
             String subject,
@@ -566,7 +552,7 @@ final class DiagnosticMapper {
         String localName = separator < 0
                 ? lexicalName
                 : lexicalName.substring(separator + 1);
-        if (!SAFE_TYPE_NAME.matcher(localName).matches()) {
+        if (!isSafeName(localName)) {
             return null;
         }
         Optional<QName> present = diagnostic.attributes().stream()
@@ -583,16 +569,6 @@ final class DiagnosticMapper {
             return new QName(namespaceArgument.toString(), localName);
         }
         return new QName(localName);
-    }
-
-    private static Optional<String> safeArgument(@Nullable Object[] arguments, int index) {
-        if (arguments.length <= index || arguments[index] == null) {
-            return Optional.empty();
-        }
-        String candidate = Objects.requireNonNull(arguments[index]).toString();
-        return SAFE_TYPE_NAME.matcher(candidate).matches()
-                ? Optional.of(candidate)
-                : Optional.empty();
     }
 
     private static String schemaArgument(@Nullable Object[] arguments, int index) {
@@ -698,7 +674,7 @@ final class DiagnosticMapper {
         if (qualified.matches()) {
             return Optional.of(new QName(qualified.group(1), qualified.group(2)));
         }
-        return SAFE_TYPE_NAME.matcher(term).matches() && !term.contains(":")
+        return isSafeName(term) && !term.contains(":")
                 ? Optional.of(new QName(term))
                 : Optional.empty();
     }
@@ -706,17 +682,13 @@ final class DiagnosticMapper {
     private static String renderElements(List<QName> elements) {
         return elements.stream()
                 .limit(MAX_EXPECTED_ELEMENTS)
-                .map(DiagnosticMapper::element)
+                .map(DiagnosticMappingSupport::element)
                 .reduce((left, right) -> left + " then " + right)
                 .orElse("the alternative branch");
     }
 
     private static String namespace(@Nullable QName name) {
         return name == null ? "" : name.getNamespaceURI();
-    }
-
-    private static String element(@Nullable QName name) {
-        return name == null ? "the current element" : "<" + name.getLocalPart() + ">";
     }
 
     private static String attribute(@Nullable QName name) {
@@ -745,107 +717,6 @@ final class DiagnosticMapper {
                 .orElse(-1);
     }
 
-    private static IssueBuilder issue(RawDiagnostic diagnostic, String code, String message) {
-        return issue(diagnostic, code, message, List.of());
-    }
-
-    private static IssueBuilder issue(
-            RawDiagnostic diagnostic,
-            String code,
-            String message,
-            List<QName> expectedElements) {
-        return issue(diagnostic, code, message, expectedElements, null);
-    }
-
-    private static IssueBuilder issue(
-            RawDiagnostic diagnostic,
-            String code,
-            String message,
-            List<QName> expectedElements,
-            @Nullable QName actualAttribute) {
-        return new IssueBuilder(
-                diagnostic.severity(),
-                code,
-                message,
-                diagnostic.path(),
-                diagnostic.line(),
-                diagnostic.column(),
-                diagnostic.actualElement(),
-                actualAttribute,
-                null,
-                expectedElements,
-                new ArrayList<>(List.of(diagnostic.key())));
-    }
-
-    private static IssueBuilder identityIssue(
-            RawDiagnostic diagnostic,
-            String code,
-            int constraintArgument,
-            String messagePrefix) {
-        String constraintName = safeArgument(diagnostic.arguments(), constraintArgument)
-                .orElse(null);
-        String message = constraintName == null
-                ? messagePrefix + "."
-                : messagePrefix + " '" + constraintName + "'.";
-        IssueBuilder issue = issue(diagnostic, code, message);
-        issue.constraintName = constraintName;
-        return issue;
-    }
-
-    private static final class IssueBuilder {
-        private final ValidationSeverity severity;
-        private final String code;
-        private final String message;
-        private final String path;
-        private final int line;
-        private final int column;
-        private final @Nullable QName actualElement;
-        private final @Nullable QName actualAttribute;
-        private @Nullable String constraintName;
-        private final List<QName> expectedElements;
-        private final List<String> schemaCodes;
-
-        private IssueBuilder(
-                ValidationSeverity severity,
-                String code,
-                String message,
-                String path,
-                int line,
-                int column,
-                @Nullable QName actualElement,
-                @Nullable QName actualAttribute,
-                @Nullable String constraintName,
-                List<QName> expectedElements,
-                List<String> schemaCodes) {
-            this.severity = severity;
-            this.code = code;
-            this.message = message;
-            this.path = path;
-            this.line = line;
-            this.column = column;
-            this.actualElement = actualElement;
-            this.actualAttribute = actualAttribute;
-            this.constraintName = constraintName;
-            this.expectedElements = expectedElements;
-            this.schemaCodes = schemaCodes;
-        }
-
-        private ValidationIssue build() {
-            return new ValidationIssue(
-                    severity,
-                    code,
-                    message,
-                    path,
-                    line,
-                    column,
-                    actualElement,
-                    actualAttribute,
-                    constraintName,
-                    expectedElements,
-                    schemaCodes);
-        }
-    }
-
     private record ExpectedElements(List<QName> preview, int total) {
         private static final ExpectedElements EMPTY = new ExpectedElements(List.of(), 0);
 
@@ -854,7 +725,7 @@ final class DiagnosticMapper {
                 return "schema-required content";
             }
             String rendered = preview.stream()
-                    .map(DiagnosticMapper::element)
+                    .map(DiagnosticMappingSupport::element)
                     .reduce((left, right) -> left + ", " + right)
                     .orElseThrow();
             if (total > preview.size()) {
