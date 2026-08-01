@@ -16,8 +16,7 @@ import javax.xml.transform.Source;
 import javax.xml.validation.Schema;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringWriter;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +38,15 @@ final class XercesSchemaCompiler {
             Source source,
             @Nullable LSResourceResolver resourceResolver)
             throws SchemaCompilationException {
-        SourceSnapshot snapshot = SourceSnapshot.read(source);
+        return compile(source, resourceResolver, SchemaCompilationLimits.DEFAULT);
+    }
+
+    static CompiledSchema compile(
+            Source source,
+            @Nullable LSResourceResolver resourceResolver,
+            SchemaCompilationLimits limits)
+            throws SchemaCompilationException {
+        SourceSnapshot snapshot = SourceSnapshot.read(source, limits.maxRootSchemaBytes());
         Document document = parseForMetadata(snapshot);
 
         if (snapshot.systemId() == null
@@ -49,8 +56,8 @@ final class XercesSchemaCompiler {
                     "A schema with relative imports or includes needs a Source system ID.");
         }
 
+        LocalSchemaResolver resolver = new LocalSchemaResolver(resourceResolver, limits);
         try {
-            LocalSchemaResolver resolver = new LocalSchemaResolver(resourceResolver);
             XMLSchemaFactory factory = new XMLSchemaFactory();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature(
@@ -68,6 +75,9 @@ final class XercesSchemaCompiler {
                     identity,
                     ChoiceIndex.from(schema, targetNamespace));
         } catch (SAXException | RuntimeException exception) {
+            if (resolver.limitFailure() != null) {
+                throw new SchemaCompilationException(resolver.limitFailure(), exception);
+            }
             throw new SchemaCompilationException("The XSD 1.0 schema could not be compiled.", exception);
         }
     }
@@ -144,10 +154,16 @@ final class XercesSchemaCompiler {
 
     private static final class LocalSchemaResolver implements LSResourceResolver {
         private final @Nullable LSResourceResolver delegate;
+        private final SchemaCompilationLimits limits;
         private final Map<String, byte[]> dependencies = new TreeMap<>();
+        private long totalDependencyBytes;
+        private @Nullable String limitFailure;
 
-        private LocalSchemaResolver(@Nullable LSResourceResolver delegate) {
+        private LocalSchemaResolver(
+                @Nullable LSResourceResolver delegate,
+                SchemaCompilationLimits limits) {
             this.delegate = delegate;
+            this.limits = limits;
         }
 
         @Override
@@ -185,14 +201,22 @@ final class XercesSchemaCompiler {
                             LSException.PARSE_ERR,
                             "Only local file schema dependencies are allowed.");
                 }
-                byte[] bytes = Files.readAllBytes(Path.of(resolved));
-                dependencies.put(resolved.toString(), bytes);
+                String resolvedSystemId = resolved.toString();
+                DependencyReadLimit readLimit = dependencyReadLimit(resolvedSystemId);
+                byte[] bytes;
+                try (var input = Files.newInputStream(Path.of(resolved))) {
+                    bytes = readDependencyBytes(input, readLimit);
+                }
+                rememberDependency(resolvedSystemId, bytes);
                 return new DOMInputImpl(
                         publicId,
-                        resolved.toString(),
+                        resolvedSystemId,
                         baseUri,
                         new ByteArrayInputStream(bytes),
                         null);
+            } catch (SourceSnapshot.SizeLimitExceededException exception) {
+                limitFailure = exception.limitMessage();
+                throw new LSException(LSException.PARSE_ERR, exception.limitMessage());
             } catch (IllegalArgumentException | IOException exception) {
                 throw new LSException(
                         LSException.PARSE_ERR,
@@ -204,41 +228,66 @@ final class XercesSchemaCompiler {
             return dependencies;
         }
 
+        @Nullable String limitFailure() {
+            return limitFailure;
+        }
+
         private LSInput capture(
                 LSInput input,
                 @Nullable String publicId,
                 @Nullable String requestedSystemId,
                 @Nullable String baseUri)
                 throws IOException {
+            String resolvedSystemId = resolvedSystemId(
+                    input.getSystemId(),
+                    requestedSystemId,
+                    baseUri);
             byte[] bytes;
             String encoding = input.getEncoding();
             var byteStream = input.getByteStream();
             if (byteStream != null) {
                 try (byteStream) {
-                    bytes = byteStream.readAllBytes();
+                    DependencyReadLimit readLimit =
+                            dependencyReadLimit(resolvedSystemId);
+                    bytes = readDependencyBytes(byteStream, readLimit);
                 }
             } else {
                 var characterStream = input.getCharacterStream();
                 if (characterStream != null) {
                     try (characterStream) {
-                        bytes = read(characterStream).getBytes(StandardCharsets.UTF_8);
+                        DependencyReadLimit readLimit =
+                                dependencyReadLimit(resolvedSystemId);
+                        try {
+                            bytes = SourceSnapshot.readCharacters(
+                                            characterStream,
+                                            readLimit.maxBytes(),
+                                            "Schema dependency")
+                                    .bytes();
+                        } catch (SourceSnapshot.SizeLimitExceededException exception) {
+                            throw new SourceSnapshot.SizeLimitExceededException(
+                                    readLimit.failureMessage());
+                        }
                     }
                     encoding = StandardCharsets.UTF_8.name();
-                } else if (input.getStringData() != null) {
-                    bytes = input.getStringData().getBytes(StandardCharsets.UTF_8);
-                    encoding = StandardCharsets.UTF_8.name();
                 } else {
-                    throw new LSException(
-                            LSException.PARSE_ERR,
-                            "The explicit schema resolver returned no content.");
+                    @Nullable String stringData = input.getStringData();
+                    if (stringData == null) {
+                        throw new LSException(
+                                LSException.PARSE_ERR,
+                                "The explicit schema resolver returned no content.");
+                    }
+                    DependencyReadLimit readLimit =
+                            dependencyReadLimit(resolvedSystemId);
+                    bytes = stringData.getBytes(StandardCharsets.UTF_8);
+                    if (bytes.length > readLimit.maxBytes()) {
+                        throw new SourceSnapshot.SizeLimitExceededException(
+                                readLimit.failureMessage());
+                    }
+                    encoding = StandardCharsets.UTF_8.name();
                 }
             }
 
-            String resolvedSystemId = resolvedSystemId(
-                    input.getSystemId(),
-                    requestedSystemId,
-                    baseUri);
-            dependencies.put(resolvedSystemId, bytes);
+            rememberDependency(resolvedSystemId, bytes);
             return new DOMInputImpl(
                     input.getPublicId() == null ? publicId : input.getPublicId(),
                     resolvedSystemId,
@@ -247,10 +296,55 @@ final class XercesSchemaCompiler {
                     encoding);
         }
 
-        private static String read(Reader reader) throws IOException {
-            StringWriter text = new StringWriter();
-            reader.transferTo(text);
-            return text.toString();
+        private byte[] readDependencyBytes(
+                InputStream input,
+                DependencyReadLimit readLimit)
+                throws IOException {
+            try {
+                return SourceSnapshot.readBytes(
+                        input,
+                        readLimit.maxBytes(),
+                        "Schema dependency");
+            } catch (SourceSnapshot.SizeLimitExceededException exception) {
+                throw new SourceSnapshot.SizeLimitExceededException(
+                        readLimit.failureMessage());
+            }
+        }
+
+        private DependencyReadLimit dependencyReadLimit(String systemId)
+                throws SourceSnapshot.SizeLimitExceededException {
+            byte[] previous = dependencies.get(systemId);
+            if (previous == null && dependencies.size() >= limits.maxDependencyCount()) {
+                throw new SourceSnapshot.SizeLimitExceededException(
+                        "Schema dependency count exceeds its configured limit of "
+                                + limits.maxDependencyCount() + ".");
+            }
+            long availableTotal = limits.maxTotalDependencyBytes()
+                    - totalDependencyBytes
+                    + (previous == null ? 0 : previous.length);
+            if (availableTotal <= 0) {
+                throw SourceSnapshot.sizeLimitExceeded(
+                        "Total schema dependency content",
+                        limits.maxTotalDependencyBytes());
+            }
+            if (availableTotal < limits.maxDependencyBytes()) {
+                return new DependencyReadLimit(
+                        (int) Math.min(availableTotal, Integer.MAX_VALUE),
+                        "Total schema dependency content exceeds its configured limit of "
+                                + limits.maxTotalDependencyBytes() + " bytes.");
+            }
+            return new DependencyReadLimit(
+                    limits.maxDependencyBytes(),
+                    "Schema dependency exceeds its configured limit of "
+                            + limits.maxDependencyBytes() + " bytes.");
+        }
+
+        private void rememberDependency(String systemId, byte[] bytes) {
+            byte[] previous = dependencies.put(systemId, bytes);
+            totalDependencyBytes += bytes.length - (previous == null ? 0 : previous.length);
+        }
+
+        private record DependencyReadLimit(int maxBytes, String failureMessage) {
         }
 
         private static String resolvedSystemId(
