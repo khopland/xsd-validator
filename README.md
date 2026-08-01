@@ -80,6 +80,12 @@ dependencies are fingerprinted and still cannot contain a DOCTYPE.
 Use `ValidationIssue.code()` for application logic. Messages are safe prose,
 not a parsing interface.
 
+Choice-specific codes are conservative enrichments of Xerces content errors.
+They are produced for non-repeating choice particles when the selected branch
+can be established from retained sibling context. Choices inside repeating
+particles, or cases that depend on children older than the latest 100 retained
+under one parent, fall back to the general element and content issue codes.
+
 ## Redacted diagnostic example
 
 Given the submitted XML `<age>customer-secret</age>` and an `xs:int`
