@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  java:
     name: Java ${{ matrix.java }}
     runs-on: ubuntu-latest
     strategy:
@@ -26,3 +26,14 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
       - run: mvn --batch-mode --no-transfer-progress verify
+
+  ci:
+    name: CI
+    if: always()
+    needs: java
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful Java matrix
+        env:
+          MATRIX_RESULT: ${{ needs.java.result }}
+        run: test "$MATRIX_RESULT" = "success"
