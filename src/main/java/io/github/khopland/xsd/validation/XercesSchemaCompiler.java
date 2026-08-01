@@ -242,18 +242,21 @@ final class XercesSchemaCompiler {
                     input.getSystemId(),
                     requestedSystemId,
                     baseUri);
-            DependencyReadLimit readLimit = dependencyReadLimit(resolvedSystemId);
             byte[] bytes;
             String encoding = input.getEncoding();
             var byteStream = input.getByteStream();
             if (byteStream != null) {
                 try (byteStream) {
+                    DependencyReadLimit readLimit =
+                            dependencyReadLimit(resolvedSystemId);
                     bytes = readDependencyBytes(byteStream, readLimit);
                 }
             } else {
                 var characterStream = input.getCharacterStream();
                 if (characterStream != null) {
                     try (characterStream) {
+                        DependencyReadLimit readLimit =
+                                dependencyReadLimit(resolvedSystemId);
                         try {
                             bytes = SourceSnapshot.readCharacters(
                                             characterStream,
@@ -266,17 +269,21 @@ final class XercesSchemaCompiler {
                         }
                     }
                     encoding = StandardCharsets.UTF_8.name();
-                } else if (input.getStringData() != null) {
-                    bytes = input.getStringData().getBytes(StandardCharsets.UTF_8);
+                } else {
+                    @Nullable String stringData = input.getStringData();
+                    if (stringData == null) {
+                        throw new LSException(
+                                LSException.PARSE_ERR,
+                                "The explicit schema resolver returned no content.");
+                    }
+                    DependencyReadLimit readLimit =
+                            dependencyReadLimit(resolvedSystemId);
+                    bytes = stringData.getBytes(StandardCharsets.UTF_8);
                     if (bytes.length > readLimit.maxBytes()) {
                         throw new SourceSnapshot.SizeLimitExceededException(
                                 readLimit.failureMessage());
                     }
                     encoding = StandardCharsets.UTF_8.name();
-                } else {
-                    throw new LSException(
-                            LSException.PARSE_ERR,
-                            "The explicit schema resolver returned no content.");
                 }
             }
 
@@ -307,7 +314,7 @@ final class XercesSchemaCompiler {
         private DependencyReadLimit dependencyReadLimit(String systemId)
                 throws SourceSnapshot.SizeLimitExceededException {
             byte[] previous = dependencies.get(systemId);
-            if (previous == null && dependencies.size() == limits.maxDependencyCount()) {
+            if (previous == null && dependencies.size() >= limits.maxDependencyCount()) {
                 throw new SourceSnapshot.SizeLimitExceededException(
                         "Schema dependency count exceeds its configured limit of "
                                 + limits.maxDependencyCount() + ".");

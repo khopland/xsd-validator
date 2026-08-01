@@ -130,6 +130,40 @@ class SchemaCompilationTest {
     }
 
     @Test
+    void limitsAndClosesDependenciesReturnedByAnExplicitResolver() {
+        String root = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:include schemaLocation="memory:/types.xsd"/>
+                </xs:schema>
+                """;
+        String dependency = emptySchema("resolver-dependency");
+        byte[] dependencyBytes = dependency.getBytes(StandardCharsets.UTF_8);
+        AtomicBoolean streamClosed = new AtomicBoolean();
+        SchemaCompilationLimits limits =
+                new SchemaCompilationLimits(4096, 1, dependencyBytes.length - 1, 4096);
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(new StringReader(root)),
+                        (type, namespaceUri, publicId, systemId, baseUri) -> {
+                            DOMInputImpl input = new DOMInputImpl();
+                            input.setSystemId(systemId);
+                            input.setByteStream(new ByteArrayInputStream(dependencyBytes) {
+                                @Override
+                                public void close() throws IOException {
+                                    streamClosed.set(true);
+                                    super.close();
+                                }
+                            });
+                            return input;
+                        },
+                        limits))
+                .withMessage("Schema dependency exceeds its configured limit of "
+                        + (dependencyBytes.length - 1) + " bytes.");
+        assertThat(streamClosed).isTrue();
+    }
+
+    @Test
     void requiresABaseUriForRelativeSchemaDependencies() {
         assertThatExceptionOfType(SchemaCompilationException.class)
                 .isThrownBy(() -> compile("""
