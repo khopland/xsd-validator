@@ -6,9 +6,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.MissingResourceException;
 import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
 import javax.xml.parsers.ParserConfigurationException;
@@ -16,13 +14,7 @@ import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.ValidatorHandler;
-import org.apache.xerces.impl.XMLErrorReporter;
-import org.apache.xerces.impl.xs.XSMessageFormatter;
 import org.apache.xerces.jaxp.SAXParserFactoryImpl;
-import org.apache.xerces.util.MessageFormatter;
-import org.apache.xerces.xni.XNIException;
-import org.apache.xerces.xni.parser.XMLErrorHandler;
-import org.apache.xerces.xni.parser.XMLParseException;
 import org.apache.xerces.xs.ElementPSVI;
 import org.apache.xerces.xs.ItemPSVI;
 import org.apache.xerces.xs.PSVIProvider;
@@ -40,11 +32,7 @@ import org.xml.sax.helpers.DefaultHandler;
 /**
  * Owns the structural and schema-derived evidence observed during one validation.
  */
-final class ValidationObservation extends DefaultHandler implements XMLErrorHandler {
-    private static final String ERROR_HANDLER =
-            "http://apache.org/xml/properties/internal/error-handler";
-    private static final String ERROR_REPORTER =
-            "http://apache.org/xml/properties/internal/error-reporter";
+final class ValidationObservation extends DefaultHandler {
     private static final int MAX_RETAINED_CHILDREN = 100;
     private static final int MAX_RETAINED_ATTRIBUTES = 100;
     private static final int MAX_RETAINED_DIAGNOSTICS = 1_000;
@@ -63,8 +51,6 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
     private boolean truncated;
     private boolean hasErrors;
     private boolean hasFatal;
-    private @Nullable String pendingKey;
-    private @Nullable Object @Nullable [] pendingArguments;
 
     private ValidationObservation(
             ValidatorHandler validator,
@@ -90,8 +76,9 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         boolean complete = true;
 
         try {
-            observation.configureStructuredErrors();
-            XMLReader reader = xmlReader(source, observation);
+            XercesDiagnosticAdapter diagnosticAdapter =
+                    XercesDiagnosticAdapter.install(validator, observation::add);
+            XMLReader reader = xmlReader(source, observation, diagnosticAdapter);
             reader.setContentHandler(observation);
             reader.parse(inputSource(source));
         } catch (SAXException
@@ -105,20 +92,15 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         return observation.report(complete, compiledSchema);
     }
 
-    private void configureStructuredErrors() throws SAXException {
-        XMLErrorReporter reporter =
-                (XMLErrorReporter) validator.getProperty(ERROR_REPORTER);
-        MessageFormatter formatter =
-                reporter.getMessageFormatter(XSMessageFormatter.SCHEMA_DOMAIN);
-        reporter.putMessageFormatter(
-                XSMessageFormatter.SCHEMA_DOMAIN,
-                new CapturingFormatter(formatter, this));
-        validator.setProperty(ERROR_HANDLER, this);
-    }
-
     private void processingStopped() {
         if (!hasFatal) {
-            add("", "xml-processing-stopped", null, ValidationSeverity.FATAL);
+            add(
+                    "",
+                    "xml-processing-stopped",
+                    new Object[0],
+                    ValidationSeverity.FATAL,
+                    line(),
+                    column());
         }
     }
 
@@ -144,12 +126,14 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
                         skippedOrLaxContent));
     }
 
-    private static XMLReader newSecureReader(ValidationObservation observation)
+    private static XMLReader newSecureReader(
+            ValidationObservation observation,
+            XercesDiagnosticAdapter diagnosticAdapter)
             throws SAXException, ParserConfigurationException {
         SAXParserFactoryImpl factory = new SAXParserFactoryImpl();
         factory.setNamespaceAware(true);
         XMLReader reader = factory.newSAXParser().getXMLReader();
-        configureSecureReader(reader, observation);
+        configureSecureReader(reader, observation, diagnosticAdapter);
         return reader;
     }
 
@@ -159,14 +143,15 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
      */
     private static XMLReader xmlReader(
             Source source,
-            ValidationObservation observation)
+            ValidationObservation observation,
+            XercesDiagnosticAdapter diagnosticAdapter)
             throws SAXException, ParserConfigurationException {
         if (source instanceof SAXSource saxSource && saxSource.getXMLReader() != null) {
             XMLReader reader = saxSource.getXMLReader();
-            configureSecureReader(reader, observation);
+            configureSecureReader(reader, observation, diagnosticAdapter);
             return reader;
         }
-        return newSecureReader(observation);
+        return newSecureReader(observation, diagnosticAdapter);
     }
 
     /**
@@ -175,7 +160,8 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
      */
     private static void configureSecureReader(
             XMLReader reader,
-            ValidationObservation observation)
+            ValidationObservation observation,
+            XercesDiagnosticAdapter diagnosticAdapter)
             throws SAXException {
         reader.setFeature("http://xml.org/sax/features/namespaces", true);
         reader.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -185,7 +171,7 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         reader.setFeature(
                 "http://apache.org/xml/features/nonvalidating/load-external-dtd",
                 false);
-        reader.setProperty(ERROR_HANDLER, observation);
+        diagnosticAdapter.installOn(reader);
         reader.setEntityResolver((publicId, systemId) -> {
             throw new SAXException("External entity resolution is disabled.");
         });
@@ -294,59 +280,29 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
         validator.skippedEntity(name);
     }
 
-    @Override
-    public void warning(String domain, String key, XMLParseException exception)
-            throws XNIException {
-        add(domain, key, exception, ValidationSeverity.WARNING);
-    }
-
-    @Override
-    public void error(String domain, String key, XMLParseException exception)
-            throws XNIException {
-        add(domain, key, exception, ValidationSeverity.ERROR);
-    }
-
-    @Override
-    public void fatalError(String domain, String key, XMLParseException exception)
-            throws XNIException {
-        add(domain, key, exception, ValidationSeverity.FATAL);
-    }
-
-    private void captureArguments(
-            String key,
-            @Nullable Object @Nullable [] arguments) {
-        pendingKey = key;
-        pendingArguments = arguments == null ? new Object[0] : arguments.clone();
-    }
-
     private void add(
             String domain,
             String key,
-            @Nullable XMLParseException exception,
-            ValidationSeverity severity) {
+            @Nullable Object[] arguments,
+            ValidationSeverity severity,
+            int diagnosticLine,
+            int diagnosticColumn) {
         rawEventCount++;
         hasErrors |= severity != ValidationSeverity.WARNING;
         hasFatal |= severity == ValidationSeverity.FATAL;
         if (diagnostics.size() == MAX_RETAINED_DIAGNOSTICS) {
             truncated = true;
-            pendingKey = null;
-            pendingArguments = null;
             return;
         }
         Context context = context();
-        @Nullable Object[] arguments = key.equals(pendingKey) && pendingArguments != null
-                ? pendingArguments
-                : new Object[0];
-        pendingKey = null;
-        pendingArguments = null;
         diagnostics.add(new RawDiagnostic(
                 domain,
                 key,
                 arguments,
                 severity,
                 context.path(),
-                exception == null ? context.line() : exception.getLineNumber(),
-                exception == null ? context.column() : exception.getColumnNumber(),
+                diagnosticLine,
+                diagnosticColumn,
                 context.actualElement(),
                 context.parentElement(),
                 context.actualType(),
@@ -465,28 +421,6 @@ final class ValidationObservation extends DefaultHandler implements XMLErrorHand
                 skippedOrLaxContent = !hasNonWarningDiagnosticAt(currentPath);
             }
             depth--;
-        }
-    }
-
-    private static final class CapturingFormatter implements MessageFormatter {
-        private final MessageFormatter delegate;
-        private final ValidationObservation observation;
-
-        private CapturingFormatter(
-                MessageFormatter delegate,
-                ValidationObservation observation) {
-            this.delegate = delegate;
-            this.observation = observation;
-        }
-
-        @Override
-        public String formatMessage(
-                @Nullable Locale locale,
-                String key,
-                @Nullable Object @Nullable [] arguments)
-                throws MissingResourceException {
-            observation.captureArguments(key, arguments);
-            return delegate.formatMessage(locale, key, arguments);
         }
     }
 
