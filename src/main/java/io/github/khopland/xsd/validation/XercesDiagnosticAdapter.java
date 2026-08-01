@@ -39,11 +39,13 @@ final class XercesDiagnosticAdapter implements XMLErrorHandler {
         XercesDiagnosticAdapter adapter = new XercesDiagnosticAdapter(consumer);
         XMLErrorReporter reporter =
                 (XMLErrorReporter) validator.getProperty(ERROR_REPORTER);
-        MessageFormatter formatter =
+        @Nullable MessageFormatter formatter =
                 reporter.getMessageFormatter(XSMessageFormatter.SCHEMA_DOMAIN);
-        reporter.putMessageFormatter(
-                XSMessageFormatter.SCHEMA_DOMAIN,
-                new CapturingFormatter(formatter, adapter));
+        if (formatter != null) {
+            reporter.putMessageFormatter(
+                    XSMessageFormatter.SCHEMA_DOMAIN,
+                    new CapturingFormatter(formatter, adapter));
+        }
         validator.setProperty(ERROR_HANDLER, adapter);
         return adapter;
     }
