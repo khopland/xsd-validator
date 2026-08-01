@@ -28,8 +28,26 @@ public final class BetterXsdValidator {
      */
     public static BetterXsdValidator compile(Source schemaSource)
             throws SchemaCompilationException {
+        return compile(schemaSource, SchemaCompilationLimits.DEFAULT);
+    }
+
+    /**
+     * Compiles an XSD 1.0 schema for reuse with explicit compilation limits.
+     *
+     * @param schemaSource schema content; a system ID is required for relative dependencies
+     * @param compilationLimits hard limits for materialized schema content
+     * @return a reusable, thread-safe validator
+     * @throws SchemaCompilationException when the schema cannot be compiled safely
+     */
+    public static BetterXsdValidator compile(
+            Source schemaSource,
+            SchemaCompilationLimits compilationLimits)
+            throws SchemaCompilationException {
         return new BetterXsdValidator(
-                XercesSchemaCompiler.compile(schemaSource, null),
+                XercesSchemaCompiler.compile(
+                        schemaSource,
+                        null,
+                        Objects.requireNonNull(compilationLimits, "compilationLimits")),
                 ValidationLimits.DEFAULT);
     }
 
@@ -45,10 +63,28 @@ public final class BetterXsdValidator {
             Source schemaSource,
             LSResourceResolver resolver)
             throws SchemaCompilationException {
+        return compile(schemaSource, resolver, SchemaCompilationLimits.DEFAULT);
+    }
+
+    /**
+     * Compiles an XSD 1.0 schema using an explicit dependency resolver and compilation limits.
+     *
+     * @param schemaSource root schema content
+     * @param resolver resolver for classpath, JAR, in-memory, or other approved dependencies
+     * @param compilationLimits hard limits for materialized schema content
+     * @return a reusable, thread-safe validator
+     * @throws SchemaCompilationException when the schema cannot be compiled safely
+     */
+    public static BetterXsdValidator compile(
+            Source schemaSource,
+            LSResourceResolver resolver,
+            SchemaCompilationLimits compilationLimits)
+            throws SchemaCompilationException {
         return new BetterXsdValidator(
                 XercesSchemaCompiler.compile(
                         schemaSource,
-                        Objects.requireNonNull(resolver, "resolver")),
+                        Objects.requireNonNull(resolver, "resolver"),
+                        Objects.requireNonNull(compilationLimits, "compilationLimits")),
                 ValidationLimits.DEFAULT);
     }
 

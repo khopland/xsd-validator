@@ -59,6 +59,22 @@ dependencies, call `compile(schemaSource, resolver)` with a standard
 `LSResourceResolver`. The resolver is an explicit trust boundary; resolved
 dependencies are fingerprinted and still cannot contain a DOCTYPE.
 
+Schema compilation is also bounded by default: 16 MiB for the root schema, 64
+dependencies, 16 MiB per dependency, and 64 MiB across dependencies. Trusted
+schema sets that need higher limits can opt in explicitly:
+
+```java
+SchemaCompilationLimits limits =
+        new SchemaCompilationLimits(
+                32 * 1024 * 1024,
+                128,
+                32 * 1024 * 1024,
+                128L * 1024 * 1024);
+
+BetterXsdValidator validator =
+        BetterXsdValidator.compile(schemaSource, resolver, limits);
+```
+
 ## Report contract
 
 - `valid` is true only when parsing completed and Xerces reported no errors.
