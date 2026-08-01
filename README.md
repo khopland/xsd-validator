@@ -84,7 +84,9 @@ Choice-specific codes are conservative enrichments of Xerces content errors.
 They are produced for non-repeating choice particles when the selected branch
 can be established from retained sibling context. Choices inside repeating
 particles, or cases that depend on children older than the latest 100 retained
-under one parent, fall back to the general element and content issue codes.
+under one parent, fall back to the general element and content issue codes. The
+100-child history is a fixed diagnostic-retention cap;
+`withLimits(ValidationLimits)` changes distinct-child tracking, not this cap.
 
 ## Redacted diagnostic example
 
