@@ -75,6 +75,19 @@ BetterXsdValidator validator =
         BetterXsdValidator.compile(schemaSource, resolver, limits);
 ```
 
+For a fully trusted schema bundle whose size is controlled outside the library,
+the library caps can be deliberately removed at the call site:
+
+```java
+BetterXsdValidator validator = BetterXsdValidator.compile(
+        schemaSource,
+        resolver,
+        SchemaCompilationLimits.TRUSTED_UNBOUNDED);
+```
+
+`TRUSTED_UNBOUNDED` must not be used for user-supplied schemas or an untrusted
+resolver. JVM memory and maximum array sizes still apply.
+
 ## Report contract
 
 - `valid` is true only when parsing completed and Xerces reported no errors.

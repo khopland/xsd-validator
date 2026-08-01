@@ -21,6 +21,19 @@ public record SchemaCompilationLimits(
             16 * 1024 * 1024,
             64L * 1024 * 1024);
 
+    /**
+     * Effectively disables library-enforced schema size and dependency limits.
+     *
+     * <p>Only use this option when the root schema and every dependency resolver are
+     * controlled by a trusted party. JVM memory and maximum array sizes still apply.
+     */
+    public static final SchemaCompilationLimits TRUSTED_UNBOUNDED =
+            new SchemaCompilationLimits(
+                    Integer.MAX_VALUE,
+                    Integer.MAX_VALUE,
+                    Integer.MAX_VALUE,
+                    Long.MAX_VALUE);
+
     /** Validates that every limit can bound compilation. */
     public SchemaCompilationLimits {
         if (maxRootSchemaBytes <= 0) {

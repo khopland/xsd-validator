@@ -130,6 +130,16 @@ class SchemaCompilationTest {
     }
 
     @Test
+    void providesExplicitTrustedUnboundedCompilationLimits() {
+        assertThat(SchemaCompilationLimits.TRUSTED_UNBOUNDED)
+                .isEqualTo(new SchemaCompilationLimits(
+                        Integer.MAX_VALUE,
+                        Integer.MAX_VALUE,
+                        Integer.MAX_VALUE,
+                        Long.MAX_VALUE));
+    }
+
+    @Test
     void limitsAndClosesDependenciesReturnedByAnExplicitResolver() {
         String root = """
                 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
