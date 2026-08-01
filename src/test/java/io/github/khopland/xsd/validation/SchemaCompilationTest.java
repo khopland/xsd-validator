@@ -26,6 +26,154 @@ import org.xml.sax.helpers.XMLFilterImpl;
 
 class SchemaCompilationTest {
     @Test
+    void enforcesRootSchemaByteLimitsForByteAndCharacterSources() throws Exception {
+        String schema = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:annotation><xs:documentation>blå</xs:documentation></xs:annotation>
+                </xs:schema>
+                """;
+        byte[] bytes = schema.getBytes(StandardCharsets.UTF_8);
+        SchemaCompilationLimits exactLimits =
+                new SchemaCompilationLimits(bytes.length, 1, 1024, 1024);
+        SchemaCompilationLimits smallerLimits =
+                new SchemaCompilationLimits(bytes.length - 1, 1, 1024, 1024);
+
+        assertThat(BetterXsdValidator.compile(
+                        new StreamSource(new ByteArrayInputStream(bytes)),
+                        exactLimits))
+                .isNotNull();
+        assertThat(BetterXsdValidator.compile(
+                        new StreamSource(new StringReader(schema)),
+                        exactLimits))
+                .isNotNull();
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(new ByteArrayInputStream(bytes)),
+                        smallerLimits))
+                .withMessageContaining("Root schema exceeds");
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(new StringReader(schema)),
+                        smallerLimits))
+                .withMessageContaining("Root schema exceeds");
+    }
+
+    @Test
+    void enforcesThePerDependencyByteLimit(@TempDir Path directory) throws Exception {
+        String dependency = emptySchema("dependency-content");
+        Path root = schemaSet(directory, dependency, null);
+        int dependencyBytes = dependency.getBytes(StandardCharsets.UTF_8).length;
+        SchemaCompilationLimits exactLimits =
+                new SchemaCompilationLimits(4096, 2, dependencyBytes, dependencyBytes);
+        SchemaCompilationLimits smallerLimits =
+                new SchemaCompilationLimits(4096, 2, dependencyBytes - 1, 4096);
+
+        assertThat(BetterXsdValidator.compile(
+                        new StreamSource(root.toFile()),
+                        exactLimits))
+                .isNotNull();
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(root.toFile()),
+                        smallerLimits))
+                .withMessage("Schema dependency exceeds its configured limit of "
+                        + (dependencyBytes - 1) + " bytes.");
+    }
+
+    @Test
+    void rejectsTooManyDistinctSchemaDependencies(@TempDir Path directory) throws Exception {
+        String dependency = emptySchema("dependency-content");
+        Path root = schemaSet(directory, dependency, dependency);
+        SchemaCompilationLimits limits =
+                new SchemaCompilationLimits(4096, 1, 4096, 8192);
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(root.toFile()),
+                        limits))
+                .withMessage("Schema dependency count exceeds its configured limit of 1.");
+    }
+
+    @Test
+    void rejectsSchemaDependenciesAboveTheTotalByteLimit(@TempDir Path directory)
+            throws Exception {
+        String firstDependency = emptySchema("first");
+        String secondDependency = emptySchema("second");
+        Path root = schemaSet(directory, firstDependency, secondDependency);
+        long totalBytes = firstDependency.getBytes(StandardCharsets.UTF_8).length
+                + secondDependency.getBytes(StandardCharsets.UTF_8).length;
+        SchemaCompilationLimits limits =
+                new SchemaCompilationLimits(4096, 2, 4096, totalBytes - 1);
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(root.toFile()),
+                        limits))
+                .withMessage("Total schema dependency content exceeds its configured limit of "
+                        + (totalBytes - 1) + " bytes.");
+    }
+
+    @Test
+    void rejectsNonPositiveSchemaCompilationLimits() {
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new SchemaCompilationLimits(0, 1, 1, 1))
+                .withMessageContaining("maxRootSchemaBytes");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new SchemaCompilationLimits(1, 0, 1, 1))
+                .withMessageContaining("maxDependencyCount");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new SchemaCompilationLimits(1, 1, 0, 1))
+                .withMessageContaining("maxDependencyBytes");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new SchemaCompilationLimits(1, 1, 1, 0))
+                .withMessageContaining("maxTotalDependencyBytes");
+    }
+
+    @Test
+    void providesExplicitTrustedUnboundedCompilationLimits() {
+        assertThat(SchemaCompilationLimits.TRUSTED_UNBOUNDED)
+                .isEqualTo(new SchemaCompilationLimits(
+                        Integer.MAX_VALUE,
+                        Integer.MAX_VALUE,
+                        Integer.MAX_VALUE,
+                        Long.MAX_VALUE));
+    }
+
+    @Test
+    void limitsAndClosesDependenciesReturnedByAnExplicitResolver() {
+        String root = """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:include schemaLocation="memory:/types.xsd"/>
+                </xs:schema>
+                """;
+        String dependency = emptySchema("resolver-dependency");
+        byte[] dependencyBytes = dependency.getBytes(StandardCharsets.UTF_8);
+        AtomicBoolean streamClosed = new AtomicBoolean();
+        SchemaCompilationLimits limits =
+                new SchemaCompilationLimits(4096, 1, dependencyBytes.length - 1, 4096);
+
+        assertThatExceptionOfType(SchemaCompilationException.class)
+                .isThrownBy(() -> BetterXsdValidator.compile(
+                        new StreamSource(new StringReader(root)),
+                        (type, namespaceUri, publicId, systemId, baseUri) -> {
+                            DOMInputImpl input = new DOMInputImpl();
+                            input.setSystemId(systemId);
+                            input.setByteStream(new ByteArrayInputStream(dependencyBytes) {
+                                @Override
+                                public void close() throws IOException {
+                                    streamClosed.set(true);
+                                    super.close();
+                                }
+                            });
+                            return input;
+                        },
+                        limits))
+                .withMessage("Schema dependency exceeds its configured limit of "
+                        + (dependencyBytes.length - 1) + " bytes.");
+        assertThat(streamClosed).isTrue();
+    }
+
+    @Test
     void requiresABaseUriForRelativeSchemaDependencies() {
         assertThatExceptionOfType(SchemaCompilationException.class)
                 .isThrownBy(() -> compile("""
@@ -320,6 +468,35 @@ class SchemaCompilationTest {
         assertThat(readerUsed).isTrue();
         assertThat(report.valid()).isTrue();
         assertThat(report.complete()).isTrue();
+    }
+
+    private static String emptySchema(String documentation) {
+        return """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:annotation><xs:documentation>%s</xs:documentation></xs:annotation>
+                </xs:schema>
+                """.formatted(documentation);
+    }
+
+    private static Path schemaSet(
+            Path directory,
+            String firstDependency,
+            @org.jspecify.annotations.Nullable String secondDependency)
+            throws IOException {
+        Files.writeString(directory.resolve("first.xsd"), firstDependency);
+        String secondInclude = "";
+        if (secondDependency != null) {
+            Files.writeString(directory.resolve("second.xsd"), secondDependency);
+            secondInclude = "<xs:include schemaLocation=\"second.xsd\"/>";
+        }
+        Path root = directory.resolve("root.xsd");
+        Files.writeString(root, """
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:include schemaLocation="first.xsd"/>
+                  %s
+                </xs:schema>
+                """.formatted(secondInclude));
+        return root;
     }
 
 }

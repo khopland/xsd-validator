@@ -15,7 +15,8 @@ record SourceSnapshot(
         byte[] bytes,
         @Nullable String characters,
         @Nullable String systemId) {
-    static SourceSnapshot read(Source source) throws SchemaCompilationException {
+    static SourceSnapshot read(Source source, int maxBytes)
+            throws SchemaCompilationException {
         if (!(source instanceof StreamSource streamSource)) {
             throw new SchemaCompilationException(
                     "Only StreamSource schema input is supported.");
@@ -26,7 +27,7 @@ record SourceSnapshot(
             if (inputStream != null) {
                 try (inputStream) {
                     return new SourceSnapshot(
-                            inputStream.readAllBytes(),
+                            readBytes(inputStream, maxBytes, "Root schema"),
                             null,
                             streamSource.getSystemId());
                 }
@@ -35,12 +36,11 @@ record SourceSnapshot(
             Reader reader = streamSource.getReader();
             if (reader != null) {
                 try (reader) {
-                    StringWriter text = new StringWriter();
-                    reader.transferTo(text);
-                    String characters = text.toString();
+                    CharactersSnapshot snapshot =
+                            readCharacters(reader, maxBytes, "Root schema");
                     return new SourceSnapshot(
-                            characters.getBytes(StandardCharsets.UTF_8),
-                            characters,
+                            snapshot.bytes(),
+                            snapshot.characters(),
                             streamSource.getSystemId());
                 }
             }
@@ -52,16 +52,64 @@ record SourceSnapshot(
                             "Only local file schema system IDs are allowed.");
                 }
                 Path path = uri.isAbsolute() ? Path.of(uri) : Path.of(streamSource.getSystemId());
-                return new SourceSnapshot(
-                        Files.readAllBytes(path),
-                        null,
-                        path.toUri().toString());
+                try (InputStream fileInput = Files.newInputStream(path)) {
+                    return new SourceSnapshot(
+                            readBytes(fileInput, maxBytes, "Root schema"),
+                            null,
+                            path.toUri().toString());
+                }
             }
+        } catch (SizeLimitExceededException exception) {
+            throw new SchemaCompilationException(exception.limitMessage(), exception);
         } catch (IllegalArgumentException | IOException exception) {
             throw new SchemaCompilationException("Could not read the schema source.", exception);
         }
 
         throw new SchemaCompilationException("The schema Source has no content or system ID.");
+    }
+
+    static byte[] readBytes(InputStream input, int maxBytes, String description)
+            throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = input.read(buffer)) != -1) {
+            if ((long) bytes.size() + count > maxBytes) {
+                throw sizeLimitExceeded(description, maxBytes);
+            }
+            bytes.write(buffer, 0, count);
+        }
+        return bytes.toByteArray();
+    }
+
+    static CharactersSnapshot readCharacters(
+            Reader reader,
+            int maxBytes,
+            String description)
+            throws IOException {
+        StringBuilder characters = new StringBuilder(Math.min(maxBytes, 8192));
+        char[] buffer = new char[4096];
+        int count;
+        while ((count = reader.read(buffer)) != -1) {
+            // UTF-8 never uses fewer bytes than the number of UTF-16 code units.
+            if ((long) characters.length() + count > maxBytes) {
+                throw sizeLimitExceeded(description, maxBytes);
+            }
+            characters.append(buffer, 0, count);
+        }
+        String text = characters.toString();
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > maxBytes) {
+            throw sizeLimitExceeded(description, maxBytes);
+        }
+        return new CharactersSnapshot(text, bytes);
+    }
+
+    static SizeLimitExceededException sizeLimitExceeded(
+            String description,
+            long maxBytes) {
+        return new SizeLimitExceededException(
+                description + " exceeds its configured limit of " + maxBytes + " bytes.");
     }
 
     StreamSource asSource() {
@@ -78,5 +126,21 @@ record SourceSnapshot(
                 : new InputSource(new StringReader(characters));
         source.setSystemId(systemId);
         return source;
+    }
+
+    record CharactersSnapshot(String characters, byte[] bytes) {
+    }
+
+    static final class SizeLimitExceededException extends IOException {
+        private final String limitMessage;
+
+        SizeLimitExceededException(String message) {
+            super(message);
+            this.limitMessage = message;
+        }
+
+        String limitMessage() {
+            return limitMessage;
+        }
     }
 }
