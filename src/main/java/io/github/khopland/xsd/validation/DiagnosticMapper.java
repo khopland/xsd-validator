@@ -37,7 +37,7 @@ final class DiagnosticMapper {
                         && isValueCompanion(diagnostic, diagnostics.get(index + 1))) {
                     RawDiagnostic companion = diagnostics.get(++index);
                     QName attribute = "cvc-attribute.3".equals(companion.key())
-                            ? attributeName(companion)
+                            ? AttributeDiagnosticMapper.attributeName(companion)
                             : null;
                     DiagnosticIssueBuilder issue =
                             mapOne(diagnostic, schema, choices, attribute);
@@ -49,7 +49,7 @@ final class DiagnosticMapper {
                             diagnostic,
                             schema,
                             choices,
-                            attributeName(diagnostic));
+                            AttributeDiagnosticMapper.attributeName(diagnostic));
                     issue.addSchemaCode(diagnostics.get(++index).key());
                     issues.add(issue);
                 } else {
@@ -57,7 +57,7 @@ final class DiagnosticMapper {
                             diagnostic,
                             schema,
                             choices,
-                            attributeName(diagnostic)));
+                            AttributeDiagnosticMapper.attributeName(diagnostic)));
                 }
             } catch (RuntimeException exception) {
                 issues.add(issue(
@@ -132,6 +132,11 @@ final class DiagnosticMapper {
         if (instance != null) {
             return instance;
         }
+        @Nullable DiagnosticIssueBuilder attribute =
+                AttributeDiagnosticMapper.map(diagnostic, actualAttribute);
+        if (attribute != null) {
+            return attribute;
+        }
 
         String key = diagnostic.key();
         return switch (key) {
@@ -144,40 +149,6 @@ final class DiagnosticMapper {
                     diagnostic,
                     "XML_PROCESSING_ERROR",
                     "XML validation could not process the supplied Source.");
-            case "cvc-complex-type.4", "cvc-complex-type.4_ns" -> issue(
-                    diagnostic,
-                    "REQUIRED_ATTRIBUTE_MISSING",
-                    "Required attribute " + attribute(actualAttribute)
-                            + " is missing from " + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    actualAttribute);
-            case "cvc-complex-type.3.2.1", "cvc-complex-type.3.2.2" -> issue(
-                    diagnostic,
-                    "ATTRIBUTE_NOT_ALLOWED",
-                    "Attribute " + attribute(actualAttribute)
-                            + " is not allowed on " + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    actualAttribute);
-            case "cvc-attribute.3" -> {
-                String typeName = safeNameArgument(diagnostic.arguments(), 3)
-                        .orElse("the declared type");
-                yield issue(
-                        diagnostic,
-                        "INVALID_ATTRIBUTE_VALUE",
-                        "Attribute " + attribute(actualAttribute)
-                                + " on " + element(diagnostic.actualElement())
-                                + " does not satisfy type '" + typeName + "'.",
-                        List.of(),
-                        actualAttribute);
-            }
-            case "cvc-attribute.4", "cvc-complex-type.3.1" -> issue(
-                    diagnostic,
-                    "ATTRIBUTE_FIXED_VALUE_MISMATCH",
-                    "Attribute " + attribute(actualAttribute)
-                            + " on " + element(diagnostic.actualElement())
-                            + " must use its schema-defined fixed value.",
-                    List.of(),
-                    actualAttribute);
             case "cvc-enumeration-valid",
                  "cvc-pattern-valid",
                  "cvc-length-valid",
@@ -454,8 +425,8 @@ final class DiagnosticMapper {
                 && specific.path().equals(companion.path())
                 && specific.line() == companion.line()
                 && Objects.equals(
-                attributeName(specific),
-                attributeName(companion));
+                AttributeDiagnosticMapper.attributeName(specific),
+                AttributeDiagnosticMapper.attributeName(companion));
     }
 
     private static boolean isValueDiagnostic(String key) {
@@ -477,45 +448,6 @@ final class DiagnosticMapper {
                  "cvc-fractionDigits-valid" -> true;
             default -> false;
         };
-    }
-
-    private static boolean isAttributeDiagnostic(String key) {
-        return key.startsWith("cvc-attribute.")
-                || key.startsWith("cvc-complex-type.3.")
-                || key.equals("cvc-complex-type.4")
-                || key.equals("cvc-complex-type.4_ns");
-    }
-
-    private static @Nullable QName attributeName(RawDiagnostic diagnostic) {
-        Object lexicalArgument = diagnostic.arguments().length < 2
-                ? null
-                : diagnostic.arguments()[1];
-        if (!isAttributeDiagnostic(diagnostic.key())
-                || lexicalArgument == null) {
-            return null;
-        }
-        String lexicalName = lexicalArgument.toString();
-        int separator = lexicalName.indexOf(':');
-        String localName = separator < 0
-                ? lexicalName
-                : lexicalName.substring(separator + 1);
-        if (!isSafeName(localName)) {
-            return null;
-        }
-        Optional<QName> present = diagnostic.attributes().stream()
-                .filter(name -> name.getLocalPart().equals(localName))
-                .findFirst();
-        if (present.isPresent()) {
-            return present.get();
-        }
-        Object namespaceArgument = diagnostic.arguments().length > 2
-                ? diagnostic.arguments()[2]
-                : null;
-        if ("cvc-complex-type.4_ns".equals(diagnostic.key())
-                && namespaceArgument != null) {
-            return new QName(namespaceArgument.toString(), localName);
-        }
-        return new QName(localName);
     }
 
     private static String schemaArgument(@Nullable Object[] arguments, int index) {
