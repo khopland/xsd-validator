@@ -10,24 +10,53 @@ import java.util.Objects;
 import java.util.stream.Stream;
 import javax.xml.namespace.QName;
 import javax.xml.transform.stream.StreamSource;
+import org.apache.xerces.jaxp.validation.XSGrammarPoolContainer;
+import org.apache.xerces.xni.grammars.Grammar;
+import org.apache.xerces.xni.grammars.XMLGrammarDescription;
+import org.apache.xerces.xni.grammars.XSGrammar;
+import org.apache.xerces.xs.XSConstants;
+import org.apache.xerces.xs.XSElementDeclaration;
+import org.apache.xerces.xs.XSModel;
+import org.apache.xerces.xs.XSTypeDefinition;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jspecify.annotations.Nullable;
 
 class ContentDiagnosticMapperTest {
     private static ChoiceIndex choices;
+    private static XSTypeDefinition parentType;
 
     @BeforeAll
     static void compileSchema() throws SchemaCompilationException {
-        choices = XercesSchemaCompiler.compile(
+        XercesSchemaCompiler.CompiledSchema compiled = XercesSchemaCompiler.compile(
                 new StreamSource(new StringReader("""
                         <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-                          <xs:element name="value" type="xs:string"/>
+                          <xs:element name="value">
+                            <xs:complexType>
+                              <xs:sequence>
+                                <xs:element name="item" maxOccurs="2"/>
+                              </xs:sequence>
+                            </xs:complexType>
+                          </xs:element>
                         </xs:schema>
                         """)),
-                null).choiceIndex();
+                null);
+        choices = compiled.choiceIndex();
+        Grammar[] grammars = ((XSGrammarPoolContainer) compiled.schema())
+                .getGrammarPool()
+                .retrieveInitialGrammarSet(XMLGrammarDescription.XML_SCHEMA);
+        XSGrammar[] schemaGrammars = new XSGrammar[grammars.length];
+        for (int index = 0; index < grammars.length; index++) {
+            schemaGrammars[index] = (XSGrammar) grammars[index];
+        }
+        XSModel model = schemaGrammars[0].toXSModel(schemaGrammars);
+        XSElementDeclaration value = (XSElementDeclaration) model
+                .getComponents(XSConstants.ELEMENT_DECLARATION)
+                .itemByName(null, "value");
+        parentType = value.getTypeDefinition();
     }
 
     @ParameterizedTest(name = "{0} maps to {1}")
@@ -86,6 +115,25 @@ class ContentDiagnosticMapperTest {
 
         assertThat(issue.expectedElements())
                 .containsExactly(new QName("urn:item", "child"));
+    }
+
+    @Test
+    void classifiesElementsBeyondTheirMaximumAsDuplicates() {
+        RawDiagnostic diagnostic = diagnostic(
+                "cvc-complex-type.2.4.d",
+                new Object[0],
+                new QName("item"),
+                parentType,
+                List.of(
+                        new SeenElement(new QName("item"), 1),
+                        new SeenElement(new QName("item"), 2)));
+
+        ValidationIssue issue = Objects.requireNonNull(
+                        ContentDiagnosticMapper.map(diagnostic, choices))
+                .build();
+
+        assertThat(issue.code()).isEqualTo("DUPLICATE_ELEMENT");
+        assertThat(issue.message()).contains("<item>", "cannot occur again");
     }
 
     @Test
@@ -150,6 +198,20 @@ class ContentDiagnosticMapperTest {
     }
 
     private static RawDiagnostic diagnostic(String key, Object[] arguments) {
+        return diagnostic(
+                key,
+                arguments,
+                new QName("after"),
+                null,
+                List.of(new SeenElement(new QName("item"), 1)));
+    }
+
+    private static RawDiagnostic diagnostic(
+            String key,
+            Object[] arguments,
+            QName actualElement,
+            @Nullable XSTypeDefinition actualParentType,
+            List<SeenElement> previousSiblings) {
         return new RawDiagnostic(
                 "",
                 key,
@@ -158,11 +220,11 @@ class ContentDiagnosticMapperTest {
                 "/value[1]/after[1]",
                 1,
                 1,
-                new QName("after"),
+                actualElement,
                 new QName("value"),
                 null,
-                null,
-                List.of(new SeenElement(new QName("item"), 1)),
+                actualParentType,
+                previousSiblings,
                 List.of(),
                 List.of());
     }
