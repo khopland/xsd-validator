@@ -162,6 +162,22 @@ This library validates XML against XSD 1.0. Business rules, code-list rules,
 Schematron assertions, and requirements not expressed by the compiled XSD are
 outside its validation result.
 
+## Development verification
+
+Run the complete test, packaging, dependency-analysis, and coverage-reporting
+build with:
+
+```shell
+mvn clean verify
+```
+
+The JaCoCo report is written to `target/site/jacoco`. Public binary and source
+compatibility with the latest released API baseline is checked separately:
+
+```shell
+mvn -Papi-compatibility clean verify
+```
+
 ## Stable issue codes
 
 | Family | Codes |
