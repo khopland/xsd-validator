@@ -9,7 +9,6 @@ import io.github.khopland.xsd.validation.ValidationObservation.RawDiagnostic;
 import io.github.khopland.xsd.validation.ValidationObservation.SeenElement;
 import org.jspecify.annotations.Nullable;
 
-import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,15 +22,6 @@ final class DiagnosticMapper {
     private static final int MAX_ENUM_VALUE_LENGTH = 40;
     private static final Pattern QUALIFIED_ELEMENT =
             Pattern.compile("^\"([^\"]*)\":([\\p{Alnum}_.-]+)$");
-    private static final QName XSI_TYPE = new QName(
-            XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI,
-            "type",
-            "xsi");
-    private static final QName XSI_NIL = new QName(
-            XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI,
-            "nil",
-            "xsi");
-
     private DiagnosticMapper() {
     }
 
@@ -138,6 +128,10 @@ final class DiagnosticMapper {
         if (identity != null) {
             return identity;
         }
+        @Nullable DiagnosticIssueBuilder instance = InstanceDiagnosticMapper.map(diagnostic);
+        if (instance != null) {
+            return instance;
+        }
 
         String key = diagnostic.key();
         return switch (key) {
@@ -184,53 +178,6 @@ final class DiagnosticMapper {
                             + " must use its schema-defined fixed value.",
                     List.of(),
                     actualAttribute);
-            case "cvc-elt.2" -> issue(
-                    diagnostic,
-                    "ABSTRACT_ELEMENT_REQUIRES_SUBSTITUTE",
-                    "Abstract element " + element(diagnostic.actualElement())
-                            + " must be replaced by a permitted substitution-group member.");
-            case "cvc-elt.4.1" -> issue(
-                    diagnostic,
-                    "INVALID_XSI_TYPE",
-                    "Attribute @xsi:type on " + element(diagnostic.actualElement())
-                            + " must contain a valid QName.",
-                    List.of(),
-                    XSI_TYPE);
-            case "cvc-elt.4.2" -> issue(
-                    diagnostic,
-                    "XSI_TYPE_NOT_FOUND",
-                    "The schema cannot resolve @xsi:type on "
-                            + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    XSI_TYPE);
-            case "cvc-elt.4.3" -> issue(
-                    diagnostic,
-                    "XSI_TYPE_NOT_DERIVED",
-                    "The type selected by @xsi:type is not permitted for "
-                            + element(diagnostic.actualElement()) + ".",
-                    List.of(),
-                    XSI_TYPE);
-            case "cvc-elt.3.1" -> issue(
-                    diagnostic,
-                    "XSI_NIL_NOT_ALLOWED",
-                    "Element " + element(diagnostic.actualElement())
-                            + " is not nillable, so @xsi:nil is not allowed.",
-                    List.of(),
-                    XSI_NIL);
-            case "cvc-elt.3.2.1" -> issue(
-                    diagnostic,
-                    "NILLED_ELEMENT_HAS_CONTENT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " cannot contain content when @xsi:nil is true.",
-                    List.of(),
-                    XSI_NIL);
-            case "cvc-elt.3.2.2" -> issue(
-                    diagnostic,
-                    "XSI_NIL_FIXED_VALUE_CONFLICT",
-                    "Element " + element(diagnostic.actualElement())
-                            + " has a fixed value and cannot use @xsi:nil.",
-                    List.of(),
-                    XSI_NIL);
             case "cvc-enumeration-valid",
                  "cvc-pattern-valid",
                  "cvc-length-valid",
