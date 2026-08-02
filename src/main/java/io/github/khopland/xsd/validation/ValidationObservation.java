@@ -15,7 +15,6 @@ import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.ValidatorHandler;
-import org.apache.xerces.jaxp.SAXParserFactoryImpl;
 import org.apache.xerces.xs.ElementPSVI;
 import org.apache.xerces.xs.ItemPSVI;
 import org.apache.xerces.xs.PSVIProvider;
@@ -59,7 +58,7 @@ final class ValidationObservation extends DefaultHandler {
             ValidatorHandler validator,
             ValidationLimits limits) {
         this.validator = validator;
-        this.psviProvider = (PSVIProvider) validator;
+        this.psviProvider = XercesCompatibility.psviProvider(validator);
         this.limits = limits;
         validator.setContentHandler(new CoverageHandler());
     }
@@ -133,7 +132,7 @@ final class ValidationObservation extends DefaultHandler {
             ValidationObservation observation,
             XercesDiagnosticAdapter diagnosticAdapter)
             throws SAXException, ParserConfigurationException {
-        SAXParserFactoryImpl factory = new SAXParserFactoryImpl();
+        var factory = XercesCompatibility.saxParserFactory();
         factory.setNamespaceAware(true);
         XMLReader reader = factory.newSAXParser().getXMLReader();
         configureSecureReader(reader, observation, diagnosticAdapter);

@@ -1,9 +1,5 @@
 package io.github.khopland.xsd.validation;
 
-import org.apache.xerces.jaxp.validation.XSGrammarPoolContainer;
-import org.apache.xerces.xni.grammars.Grammar;
-import org.apache.xerces.xni.grammars.XMLGrammarDescription;
-import org.apache.xerces.xni.grammars.XSGrammar;
 import org.apache.xerces.xs.*;
 import org.jspecify.annotations.Nullable;
 
@@ -21,7 +17,7 @@ final class ChoiceIndex {
     }
 
     static ChoiceIndex from(Schema schema, String targetNamespace) {
-        XSModel model = model(schema);
+        XSModel model = XercesCompatibility.schemaModel(schema);
         if (model == null) {
             return new ChoiceIndex(List.of(), Set.of());
         }
@@ -134,20 +130,6 @@ final class ChoiceIndex {
         return parentType == null
                 ? choice.parentName().equals(parentName)
                 : choice.parentType() == parentType;
-    }
-
-    private static @Nullable XSModel model(Schema schema) {
-        Grammar[] grammars = ((XSGrammarPoolContainer) schema)
-                .getGrammarPool()
-                .retrieveInitialGrammarSet(XMLGrammarDescription.XML_SCHEMA);
-        if (grammars.length == 0) {
-            return null;
-        }
-        XSGrammar[] schemaGrammars = new XSGrammar[grammars.length];
-        for (int index = 0; index < grammars.length; index++) {
-            schemaGrammars[index] = (XSGrammar) grammars[index];
-        }
-        return schemaGrammars[0].toXSModel(schemaGrammars);
     }
 
     private static void indexElement(
