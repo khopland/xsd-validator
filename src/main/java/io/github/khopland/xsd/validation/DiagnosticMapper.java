@@ -71,15 +71,10 @@ final class DiagnosticMapper {
             SchemaIdentity schema,
             ChoiceIndex choices,
             @Nullable QName actualAttribute) {
-        if ("cvc-elt.1.a".equals(diagnostic.key())
-                && diagnostic.actualElement() != null
-                && choices.hasRootLocalName(diagnostic.actualElement().getLocalPart())
-                && !namespace(diagnostic.actualElement()).equals(schema.targetNamespace())) {
-            String actualNamespace = namespace(diagnostic.actualElement());
-            String message = "Root element " + element(diagnostic.actualElement())
-                    + " uses namespace '" + actualNamespace + "'; the schema expects '"
-                    + schema.targetNamespace() + "'.";
-            return issue(diagnostic, "ROOT_NAMESPACE_MISMATCH", message);
+        @Nullable DiagnosticIssueBuilder xml =
+                XmlDiagnosticMapper.map(diagnostic, schema, choices);
+        if (xml != null) {
+            return xml;
         }
 
         Optional<ChoiceIndex.Match> choice = choiceMatch(diagnostic, choices);
@@ -142,15 +137,6 @@ final class DiagnosticMapper {
 
         String key = diagnostic.key();
         return switch (key) {
-            case "cvc-elt.1.a" -> issue(
-                    diagnostic,
-                    "UNDECLARED_ROOT",
-                    "Root element " + element(diagnostic.actualElement())
-                            + " is not declared by the compiled schema.");
-            case "xml-processing-stopped" -> issue(
-                    diagnostic,
-                    "XML_PROCESSING_ERROR",
-                    "XML validation could not process the supplied Source.");
             case "cvc-complex-type.2.4.e", "cvc-complex-type.2.4.f" -> {
                 int maximum = integerArgument(
                         diagnostic.arguments(),
@@ -390,10 +376,6 @@ final class DiagnosticMapper {
                 .map(DiagnosticMappingSupport::element)
                 .reduce((left, right) -> left + " then " + right)
                 .orElse("the alternative branch");
-    }
-
-    private static String namespace(@Nullable QName name) {
-        return name == null ? "" : name.getNamespaceURI();
     }
 
     private static String location(int line) {
