@@ -178,6 +178,14 @@ compatibility with the latest released API baseline is checked separately:
 mvn -Papi-compatibility clean verify
 ```
 
+## Engineering review
+
+The dated [repository findings](xsd-validator-findings-2026-08-02.html) capture
+the `6c99b1d` baseline that motivated the source-boundary, workload-budget,
+Xerces-compatibility, and assurance-automation changes. The page links the
+stacked pull requests that implement every recommended action while preserving
+the original evidence and scope.
+
 ## Stable issue codes
 
 | Family | Codes |
