@@ -51,33 +51,12 @@ final class ValueDiagnosticMapper {
                     subject + " does not match its schema pattern.",
                     List.of(),
                     actualAttribute);
-            case "cvc-length-valid" -> issue(
-                    diagnostic,
-                    "LENGTH_VIOLATION",
-                    subject + " must have length "
-                            + schemaArgument(diagnostic.arguments(), 2)
-                            + "; its submitted length is "
-                            + schemaArgument(diagnostic.arguments(), 1) + ".",
-                    List.of(),
-                    actualAttribute);
-            case "cvc-minLength-valid" -> issue(
-                    diagnostic,
-                    "LENGTH_VIOLATION",
-                    subject + " must have length at least "
-                            + schemaArgument(diagnostic.arguments(), 2)
-                            + "; its submitted length is "
-                            + schemaArgument(diagnostic.arguments(), 1) + ".",
-                    List.of(),
-                    actualAttribute);
-            case "cvc-maxLength-valid" -> issue(
-                    diagnostic,
-                    "LENGTH_VIOLATION",
-                    subject + " must have length at most "
-                            + schemaArgument(diagnostic.arguments(), 2)
-                            + "; its submitted length is "
-                            + schemaArgument(diagnostic.arguments(), 1) + ".",
-                    List.of(),
-                    actualAttribute);
+            case "cvc-length-valid" -> lengthIssue(
+                    diagnostic, actualAttribute, subject, "");
+            case "cvc-minLength-valid" -> lengthIssue(
+                    diagnostic, actualAttribute, subject, "at least ");
+            case "cvc-maxLength-valid" -> lengthIssue(
+                    diagnostic, actualAttribute, subject, "at most ");
             case "cvc-minInclusive-valid" -> boundIssue(
                     diagnostic, actualAttribute, subject, "at least", "MINIMUM_VIOLATION");
             case "cvc-minExclusive-valid" -> boundIssue(
@@ -124,6 +103,22 @@ final class ValueDiagnosticMapper {
                  "cvc-fractionDigits-valid" -> true;
             default -> false;
         };
+    }
+
+    private static DiagnosticIssueBuilder lengthIssue(
+            RawDiagnostic diagnostic,
+            @Nullable QName actualAttribute,
+            String subject,
+            String comparison) {
+        return issue(
+                diagnostic,
+                "LENGTH_VIOLATION",
+                subject + " must have length " + comparison
+                        + schemaArgument(diagnostic.arguments(), 2)
+                        + "; its submitted length is "
+                        + schemaArgument(diagnostic.arguments(), 1) + ".",
+                List.of(),
+                actualAttribute);
     }
 
     private static DiagnosticIssueBuilder boundIssue(

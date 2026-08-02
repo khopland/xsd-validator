@@ -52,6 +52,40 @@ class ValueDiagnosticMapperTest {
     }
 
     @Test
+    void boundsEnumerationCountsAndValueLengths() {
+        String longValue = "x".repeat(41);
+        RawDiagnostic diagnostic = diagnostic(
+                "cvc-enumeration-valid",
+                new Object[] {
+                    "private-submitted-value",
+                    "[" + longValue + ", b, c, d, e, f, g]"
+                });
+
+        ValidationIssue issue = Objects.requireNonNull(
+                        ValueDiagnosticMapper.map(diagnostic, null))
+                .build();
+
+        assertThat(issue.message())
+                .contains("‘" + "x".repeat(40) + "…’", "and 2 more")
+                .doesNotContain(longValue);
+    }
+
+    @Test
+    void dropsSchemaArgumentsWithControlCharacters() {
+        RawDiagnostic diagnostic = diagnostic(
+                "cvc-minInclusive-valid",
+                new Object[] {"private-submitted-value", "10\nsecret"});
+
+        ValidationIssue issue = Objects.requireNonNull(
+                        ValueDiagnosticMapper.map(diagnostic, null))
+                .build();
+
+        assertThat(issue.message())
+                .contains("the schema limit")
+                .doesNotContain("10", "secret");
+    }
+
+    @Test
     void leavesOtherDiagnosticFamiliesForTheirOwnMapper() {
         RawDiagnostic diagnostic = diagnostic("cvc-elt.4.2", new Object[0]);
 
