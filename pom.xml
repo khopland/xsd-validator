@@ -38,7 +38,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.outputTimestamp>2026-07-25T00:00:00Z</project.build.outputTimestamp>
-    <api.baseline.version>0.1.0</api.baseline.version>
+    <api.baseline.version>0.1.1</api.baseline.version>
   </properties>
 
   <dependencyManagement>
