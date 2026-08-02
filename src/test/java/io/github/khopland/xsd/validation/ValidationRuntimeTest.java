@@ -312,13 +312,64 @@ class ValidationRuntimeTest {
     }
 
     @Test
+    void stopsAtTotalElementAndCharacterBudgets() throws Exception {
+        BetterXsdValidator elementValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="items">
+                    <xs:complexType>
+                      <xs:sequence>
+                        <xs:element name="item" minOccurs="0" maxOccurs="unbounded"/>
+                      </xs:sequence>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """).withLimits(new ValidationLimits(256, 100, 3, 1_000));
+        BetterXsdValidator characterValidator = compile("""
+                <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="value">
+                    <xs:complexType mixed="true">
+                      <xs:attribute name="note" type="xs:string"/>
+                    </xs:complexType>
+                  </xs:element>
+                </xs:schema>
+                """).withLimits(new ValidationLimits(256, 100, 100, 5));
+
+        assertThat(elementValidator.validate(xml("<items><item/><item/></items>")).valid())
+                .isTrue();
+        assertThat(elementValidator
+                        .validate(xml("<items><item/><item/><item/></items>"))
+                        .complete())
+                .isFalse();
+        assertThat(characterValidator.validate(xml("<value>12345</value>")).valid())
+                .isTrue();
+        assertThat(characterValidator.validate(xml("<value>123456</value>")).complete())
+                .isFalse();
+        assertThat(characterValidator.validate(xml("<value note=\"12345\"/>")).valid())
+                .isTrue();
+        assertThat(characterValidator.validate(xml("<value note=\"123456\"/>")).complete())
+                .isFalse();
+    }
+
+    @Test
     void rejectsNonPositiveValidationLimits() {
+        ValidationLimits structuralOnly = new ValidationLimits(512, 200);
+
+        assertThat(structuralOnly.maxTotalElements())
+                .isEqualTo(ValidationLimits.DEFAULT.maxTotalElements());
+        assertThat(structuralOnly.maxTotalCharacters())
+                .isEqualTo(ValidationLimits.DEFAULT.maxTotalCharacters());
         assertThatExceptionOfType(IllegalArgumentException.class)
                 .isThrownBy(() -> new ValidationLimits(0, 100))
                 .withMessageContaining("maxElementDepth");
         assertThatExceptionOfType(IllegalArgumentException.class)
                 .isThrownBy(() -> new ValidationLimits(256, 0))
                 .withMessageContaining("maxDistinctChildNamesPerElement");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ValidationLimits(256, 100, 0, 1_000))
+                .withMessageContaining("maxTotalElements");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ValidationLimits(256, 100, 1_000, 0))
+                .withMessageContaining("maxTotalCharacters");
     }
 
     @Test

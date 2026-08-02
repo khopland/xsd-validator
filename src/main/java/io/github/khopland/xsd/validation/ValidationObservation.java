@@ -48,6 +48,8 @@ final class ValidationObservation extends DefaultHandler {
     private @Nullable Locator locator;
     private int depth;
     private int rawEventCount;
+    private long totalElements;
+    private long totalCharacters;
     private boolean skippedOrLaxContent;
     private boolean truncated;
     private boolean hasErrors;
@@ -231,6 +233,8 @@ final class ValidationObservation extends DefaultHandler {
     public void startDocument() throws SAXException {
         path.clear();
         rootCounts.clear();
+        totalElements = 0;
+        totalCharacters = 0;
         validator.startDocument();
     }
 
@@ -256,6 +260,11 @@ final class ValidationObservation extends DefaultHandler {
             String qName,
             Attributes attributes)
             throws SAXException {
+        if (totalElements == limits.maxTotalElements()) {
+            throw new SAXException("Element count exceeds the validation limit.");
+        }
+        totalElements++;
+        countAttributeCharacters(attributes);
         if (path.size() == limits.maxElementDepth()) {
             throw new SAXException("XML nesting depth exceeds the validation limit.");
         }
@@ -284,12 +293,14 @@ final class ValidationObservation extends DefaultHandler {
     @Override
     public void characters(char[] characters, int start, int length)
             throws SAXException {
+        countCharacters(length);
         validator.characters(characters, start, length);
     }
 
     @Override
     public void ignorableWhitespace(char[] characters, int start, int length)
             throws SAXException {
+        countCharacters(length);
         validator.ignorableWhitespace(characters, start, length);
     }
 
@@ -412,6 +423,22 @@ final class ValidationObservation extends DefaultHandler {
                     prefix));
         }
         return List.copyOf(names);
+    }
+
+    private void countAttributeCharacters(Attributes attributes) throws SAXException {
+        for (int index = 0; index < attributes.getLength(); index++) {
+            @Nullable String value = attributes.getValue(index);
+            if (value != null) {
+                countCharacters(value.length());
+            }
+        }
+    }
+
+    private void countCharacters(int length) throws SAXException {
+        if (length > limits.maxTotalCharacters() - totalCharacters) {
+            throw new SAXException("Character count exceeds the validation limit.");
+        }
+        totalCharacters += length;
     }
 
     private static boolean hasNoErrors(@Nullable StringList errors) {

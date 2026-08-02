@@ -49,8 +49,21 @@ Hard processing limits can be changed without recompiling the schema:
 validator = validator.withLimits(new ValidationLimits(512, 200));
 ```
 
-Higher limits allow more structural state to be retained while processing one
-document.
+The two-argument constructor changes structural limits while retaining the
+default budgets of 1,000,000 total elements and 64 Mi UTF-16 code units from
+character data and attribute values. All four limits can be set explicitly:
+
+```java
+validator = validator.withLimits(new ValidationLimits(
+        512,
+        200,
+        2_000_000,
+        128L * 1024 * 1024));
+```
+
+Higher limits allow more work and structural state while processing one
+document. These budgets do not replace an application-owned byte limit or read
+deadline on untrusted input streams.
 
 ### XML input boundary
 
@@ -113,8 +126,9 @@ resolver. JVM memory and maximum array sizes still apply.
 - `coverage` reports incomplete parsing, truncation, and allowed wildcard
   content that was skipped or only laxly assessed.
 - Default processing stops with `XML_PROCESSING_ERROR` beyond 256 nested
-  elements or 100 distinct child QNames under one parent. Use
-  `withLimits(ValidationLimits)` to change those bounds.
+  elements, 100 distinct child QNames under one parent, 1,000,000 total
+  elements, or 64 Mi UTF-16 code units in character data and attribute values.
+  Use `withLimits(ValidationLimits)` to change those bounds.
 
 Use `ValidationIssue.code()` for application logic. Messages are safe prose,
 not a parsing interface.
