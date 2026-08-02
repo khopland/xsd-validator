@@ -52,6 +52,16 @@ validator = validator.withLimits(new ValidationLimits(512, 200));
 Higher limits allow more structural state to be retained while processing one
 document.
 
+### XML input boundary
+
+Supply untrusted XML through a byte or character stream whose total size and
+read time are bounded by the application. A `StreamSource` or `SAXSource` that
+contains only a system ID is restricted to a local file; validation does not
+dereference a remote primary document. To validate deliberately approved remote
+content, open it at the application trust boundary and pass the resulting
+bounded stream. A system ID may still accompany supplied content as origin or
+base-URI metadata.
+
 By default, schema imports, includes, and redefines are restricted to local
 files. Set a system ID on the schema `Source` when it uses relative
 dependencies. For classpath, JAR, in-memory, or deliberately approved remote

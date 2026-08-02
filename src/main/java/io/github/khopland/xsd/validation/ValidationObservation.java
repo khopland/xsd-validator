@@ -1,6 +1,7 @@
 package io.github.khopland.xsd.validation;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -177,9 +178,9 @@ final class ValidationObservation extends DefaultHandler {
         });
     }
 
-    private static InputSource inputSource(Source source) throws SAXException {
+    static InputSource inputSource(Source source) throws SAXException {
         if (source instanceof SAXSource saxSource && saxSource.getInputSource() != null) {
-            return saxSource.getInputSource();
+            return restrictPrimarySystemId(saxSource.getInputSource());
         }
         if (source instanceof StreamSource streamSource) {
             InputSource input = new InputSource();
@@ -192,9 +193,32 @@ final class ValidationObservation extends DefaultHandler {
                     && input.getSystemId() == null) {
                 throw new SAXException("The XML Source has no content or system ID.");
             }
-            return input;
+            return restrictPrimarySystemId(input);
         }
         throw new SAXException("Only StreamSource and SAXSource XML input are supported.");
+    }
+
+    private static InputSource restrictPrimarySystemId(InputSource input) throws SAXException {
+        String systemId = input.getSystemId();
+        if (input.getByteStream() != null
+                || input.getCharacterStream() != null
+                || systemId == null) {
+            return input;
+        }
+        try {
+            URI uri = URI.create(systemId);
+            @Nullable String path = uri.getRawPath();
+            boolean networkPath = uri.getRawAuthority() != null
+                    || (path != null && path.startsWith("//"));
+            if (networkPath
+                    || (uri.isAbsolute() && !"file".equalsIgnoreCase(uri.getScheme()))) {
+                throw new SAXException(
+                        "Only local file XML system IDs are allowed without supplied content.");
+            }
+        } catch (IllegalArgumentException exception) {
+            throw new SAXException("The XML Source has an invalid system ID.", exception);
+        }
+        return input;
     }
 
     @Override
