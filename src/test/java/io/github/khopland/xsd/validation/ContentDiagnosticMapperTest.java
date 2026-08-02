@@ -64,6 +64,7 @@ class ContentDiagnosticMapperTest {
     void mapsEveryContentKey(
             String key,
             String expectedCode,
+            String expectedMessage,
             Object[] arguments,
             boolean hasExpectedElement) {
         RawDiagnostic diagnostic = diagnostic(key, arguments);
@@ -73,6 +74,7 @@ class ContentDiagnosticMapperTest {
                 .build();
 
         assertThat(issue.code()).isEqualTo(expectedCode);
+        assertThat(issue.message()).isEqualTo(expectedMessage);
         assertThat(issue.actualElement()).isEqualTo(new QName("after"));
         assertThat(issue.schemaCodes()).containsExactly(key);
         if (hasExpectedElement) {
@@ -153,46 +155,58 @@ class ContentDiagnosticMapperTest {
                 Arguments.of(
                         "cvc-complex-type.2.4.a",
                         "UNEXPECTED_ELEMENT",
+                        "Element <after> is not permitted here; expected <item>.",
                         new Object[] {"unused", "{item}"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.b",
                         "MISSING_ELEMENT",
+                        "Element <after> is incomplete; add <item> before it closes.",
                         new Object[] {"unused", "{item}"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.d",
                         "UNEXPECTED_ELEMENT",
+                        "Element <after> is not permitted at this position.",
                         new Object[0],
                         false),
                 Arguments.of(
                         "cvc-complex-type.2.4.e",
                         "MAX_OCCURS_EXCEEDED",
+                        "Element <after> exceeds its maximum occurrence of 2; "
+                                + "expected <item> instead.",
                         new Object[] {"unused", "{item}", "2"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.f",
                         "MAX_OCCURS_EXCEEDED",
+                        "Element <after> exceeds its maximum occurrence of 2.",
                         new Object[] {"unused", "2"},
                         false),
                 Arguments.of(
                         "cvc-complex-type.2.4.g",
                         "MIN_OCCURS_NOT_MET",
+                        "Element <after> occurs too early; add <item> first.",
                         new Object[] {"unused", "{item}"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.h",
                         "MIN_OCCURS_NOT_MET",
+                        "Element <after> occurs too early; add 2 more occurrences of "
+                                + "<item> first.",
                         new Object[] {"unused", "{item}", "unused", "2"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.i",
                         "MIN_OCCURS_NOT_MET",
+                        "Element <after> is incomplete; add <item> before it closes.",
                         new Object[] {"unused", "{item}"},
                         true),
                 Arguments.of(
                         "cvc-complex-type.2.4.j",
                         "MIN_OCCURS_NOT_MET",
+                        "Element <after> is incomplete; add 2 more occurrences of "
+                                + "<item> before it closes.",
                         new Object[] {"unused", "{item}", "unused", "2"},
                         true));
     }
