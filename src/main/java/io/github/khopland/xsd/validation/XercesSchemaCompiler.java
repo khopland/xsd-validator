@@ -1,7 +1,6 @@
 package io.github.khopland.xsd.validation;
 
 import org.apache.xerces.dom.DOMInputImpl;
-import org.apache.xerces.jaxp.validation.XMLSchemaFactory;
 import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -58,7 +57,7 @@ final class XercesSchemaCompiler {
 
         LocalSchemaResolver resolver = new LocalSchemaResolver(resourceResolver, limits);
         try {
-            XMLSchemaFactory factory = new XMLSchemaFactory();
+            var factory = XercesCompatibility.schemaFactory();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature(
                     "http://apache.org/xml/features/disallow-doctype-decl",
@@ -85,8 +84,7 @@ final class XercesSchemaCompiler {
     private static Document parseForMetadata(SourceSnapshot snapshot)
             throws SchemaCompilationException {
         try {
-            DocumentBuilderFactory factory =
-                    new org.apache.xerces.jaxp.DocumentBuilderFactoryImpl();
+            DocumentBuilderFactory factory = XercesCompatibility.documentBuilderFactory();
             factory.setNamespaceAware(true);
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);

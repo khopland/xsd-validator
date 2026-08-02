@@ -100,6 +100,7 @@ class ValidationRuntimeTest {
         assertThat(java.util.List.of(
                         XercesSchemaCompiler.class,
                         XercesSchemaCompiler.CompiledSchema.class,
+                        XercesCompatibility.class,
                         ValidationObservation.class))
                 .allSatisfy(type ->
                         assertThat(Modifier.isPublic(type.getModifiers())).isFalse());
