@@ -3,7 +3,7 @@ name: Publish release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "v0.2.*"
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
           server-id: central
           server-username: MAVEN_CENTRAL_USERNAME
@@ -27,8 +27,8 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::Release tag must be vMAJOR.MINOR.PATCH"
+          if [[ ! "$version" =~ ^0\.2\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must be v0.2.PATCH"
             exit 1
           fi
           mvn --batch-mode --no-transfer-progress \
