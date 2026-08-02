@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ["17", "21", "25"]
+        java: ["21", "25"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,11 +26,11 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
       - run: mvn --batch-mode --no-transfer-progress verify
-      - name: Upload Java 17 coverage report
-        if: matrix.java == '17'
+      - name: Upload Java 21 coverage report
+        if: matrix.java == '21'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: jacoco-java-17
+          name: jacoco-java-21
           path: target/site/jacoco
 
   api-compatibility:
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
       - run: mvn --batch-mode --no-transfer-progress -Papi-compatibility verify
 

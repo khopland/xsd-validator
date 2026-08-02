@@ -36,7 +36,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>17</maven.compiler.release>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.outputTimestamp>2026-07-25T00:00:00Z</project.build.outputTimestamp>
     <api.baseline.version>0.1.0</api.baseline.version>
   </properties>
@@ -133,7 +133,7 @@
               <path>
                 <groupId>com.google.errorprone</groupId>
                 <artifactId>error_prone_core</artifactId>
-                <version>2.42.0</version>
+                <version>2.50.0</version>
               </path>
               <path>
                 <groupId>com.uber.nullaway</groupId>

@@ -1,14 +1,14 @@
 # Better XSD Validation
 
-A small Java 17 library that compiles XSD 1.0 with Xerces and returns safe,
+A small Java 21 library that compiles XSD 1.0 with Xerces and returns safe,
 structured validation reports. It keeps raw XML values out of issues while
 adding indexed paths, QNames, expected elements, grouped Xerces keys, identity
 constraint names, and honest coverage state.
 
 ## Installation
 
-Better XSD Validation requires Java 17 or newer and is available from Maven
-Central.
+The current development line requires Java 21 or newer. The latest published
+0.1.x release supports Java 17 or newer and is available from Maven Central.
 
 Maven:
 
@@ -16,14 +16,14 @@ Maven:
 <dependency>
   <groupId>io.github.khopland.xsd.validation</groupId>
   <artifactId>xsd-validator</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("io.github.khopland.xsd.validation:xsd-validator:0.1.0")
+implementation("io.github.khopland.xsd.validation:xsd-validator:0.1.1")
 ```
 
 ## Usage
