@@ -6,12 +6,57 @@ import static io.github.khopland.xsd.validation.TestSources.xml;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import java.io.StringReader;
 import java.lang.reflect.Modifier;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import javax.xml.transform.sax.SAXSource;
+import javax.xml.transform.stream.StreamSource;
 import org.junit.jupiter.api.Test;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 class ValidationRuntimeTest {
+    @Test
+    void restrictsSystemIdOnlyXmlSourcesToLocalFiles() throws Exception {
+        StreamSource remoteStream = new StreamSource("https://example.invalid/private.xml");
+        SAXSource remoteSax = new SAXSource(
+                new InputSource("jar:https://example.invalid/a.jar!/x.xml"));
+        List<StreamSource> networkFiles = List.of(
+                new StreamSource("file://host/share.xml"),
+                new StreamSource("//host/share.xml"),
+                new StreamSource("file:////host/share.xml"));
+        StreamSource localFile = new StreamSource("file:///tmp/document.xml");
+        StreamSource relativeFile = new StreamSource("documents/document.xml");
+
+        assertThatExceptionOfType(SAXException.class)
+                .isThrownBy(() -> ValidationObservation.inputSource(remoteStream))
+                .withMessageContaining("local file XML system IDs");
+        assertThatExceptionOfType(SAXException.class)
+                .isThrownBy(() -> ValidationObservation.inputSource(remoteSax))
+                .withMessageContaining("local file XML system IDs");
+        assertThat(networkFiles).allSatisfy(source ->
+                assertThatExceptionOfType(SAXException.class)
+                        .isThrownBy(() -> ValidationObservation.inputSource(source))
+                        .withMessageContaining("local file XML system IDs"));
+        assertThat(ValidationObservation.inputSource(localFile).getSystemId())
+                .isEqualTo("file:///tmp/document.xml");
+        assertThat(ValidationObservation.inputSource(relativeFile).getSystemId())
+                .isEqualTo("documents/document.xml");
+    }
+
+    @Test
+    void acceptsAnApprovedStreamWithARemoteOriginSystemId() throws Exception {
+        StreamSource approved = new StreamSource(new StringReader("<value>ok</value>"));
+        approved.setSystemId("https://approved.example/document.xml");
+
+        InputSource input = ValidationObservation.inputSource(approved);
+
+        assertThat(input.getCharacterStream()).isNotNull();
+        assertThat(input.getSystemId()).isEqualTo("https://approved.example/document.xml");
+    }
+
     @Test
     void exposesSkippedAndLaxWildcardContentInCoverage() throws Exception {
         BetterXsdValidator skipValidator = compile("""

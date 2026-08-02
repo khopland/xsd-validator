@@ -108,6 +108,9 @@ public final class BetterXsdValidator {
      * supplies an {@link org.xml.sax.XMLReader XMLReader} must use a Xerces-backed reader.
      * The supplied reader is configured in place with the required SAX and Xerces-specific
      * security settings, validation error handler, and entity resolver.
+     * A source without a byte or character stream may refer only to a local file system ID.
+     * To validate deliberately approved remote content, open and bound the stream at the
+     * application trust boundary before supplying it here.
      *
      * @param xmlSource XML content
      * @return the immutable validation report
